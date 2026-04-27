@@ -85,3 +85,7 @@ rendering are negligible by comparison.
 [gotreesitter]: https://github.com/odvcencio/gotreesitter
 [git-pkgs/gitignore]: https://github.com/git-pkgs/gitignore
 [repomix]: https://github.com/yamadashy/repomix
+
+## License
+
+MIT
