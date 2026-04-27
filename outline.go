@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	ts "github.com/odvcencio/gotreesitter"
 	"github.com/odvcencio/gotreesitter/grammars"
@@ -16,6 +17,24 @@ import (
 var queryFS embed.FS
 
 const Separator = "⋮----"
+
+// DefaultParseTimeout caps how long the parser will spend on a single file.
+// Past this point the file is treated as unsupported and falls through as raw
+// content. Pathological inputs (large table-driven test files, generated
+// parser tables) can otherwise dominate runtime.
+const DefaultParseTimeout = time.Second
+
+// parseTimeoutMicros is read by lang.init when configuring its ParserPool. It
+// is package-level so all goroutines share the same value, set once via
+// SetParseTimeout before any Outline call.
+var parseTimeoutMicros uint64 = uint64(DefaultParseTimeout / time.Microsecond)
+
+// SetParseTimeout overrides the per-file parse timeout. Must be called before
+// the first Outline or Pack call; later calls are ignored once a language
+// pool has been created. A zero duration disables the timeout.
+func SetParseTimeout(d time.Duration) {
+	parseTimeoutMicros = uint64(d / time.Microsecond)
+}
 
 type lang struct {
 	name  string
@@ -38,7 +57,7 @@ func (l *lang) init() {
 		if l.err != nil {
 			return
 		}
-		l.pool = ts.NewParserPool(tsLang)
+		l.pool = ts.NewParserPool(tsLang, ts.WithParserPoolTimeoutMicros(parseTimeoutMicros))
 	})
 }
 
@@ -207,6 +226,10 @@ func Outline(src []byte, filename string) (string, bool) {
 		return "", false
 	}
 	defer tree.Release()
+
+	if tree.ParseStoppedEarly() {
+		return "", false
+	}
 
 	lineStart, lineEnd := indexLines(src)
 	matches := l.query.Execute(tree)
