@@ -73,6 +73,37 @@ func TestXML(t *testing.T) {
 	}
 }
 
+func TestMarkdownFenceClamped(t *testing.T) {
+	r := &Result{
+		Files: []File{{Path: "x.md", Content: strings.Repeat("`", 1000) + "\ncode"}},
+	}
+	var b strings.Builder
+	if err := r.Markdown(&b); err != nil {
+		t.Fatal(err)
+	}
+	out := b.String()
+	fence := strings.Repeat("`", 17)
+	// Check fence lines (fence+lang and closing fence), not content lines.
+	var foundOpen, foundClose bool
+	for _, line := range strings.Split(out, "\n") {
+		if strings.HasPrefix(line, fence+"markdown") {
+			foundOpen = true
+			if strings.HasPrefix(line, fence+"`") {
+				t.Error("opening fence is longer than 17 backticks")
+			}
+		}
+		if line == fence {
+			foundClose = true
+		}
+	}
+	if !foundOpen {
+		t.Error("fence should be exactly 17 backticks (16 max + 1) for opening")
+	}
+	if !foundClose {
+		t.Error("fence should be exactly 17 backticks (16 max + 1) for closing")
+	}
+}
+
 func TestPackMarkdownEndToEnd(t *testing.T) {
 	root := setupRepo(t)
 	r, err := Pack(root, Options{Compress: true, MaxFileSize: 1000})

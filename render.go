@@ -98,6 +98,9 @@ func (r *Result) fence() string {
 			s = s[j:]
 		}
 	}
+	if longest > 16 {
+		longest = 16
+	}
 	return strings.Repeat("`", longest+1)
 }
 
