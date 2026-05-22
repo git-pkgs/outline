@@ -77,6 +77,8 @@ func (r *Result) XML(w io.Writer) error {
 	return ew.err
 }
 
+const maxFenceLen = 16
+
 // fence returns a backtick run longer than any run appearing in file contents,
 // so fenced blocks never terminate early.
 func (r *Result) fence() string {
@@ -98,8 +100,8 @@ func (r *Result) fence() string {
 			s = s[j:]
 		}
 	}
-	if longest > 16 {
-		longest = 16
+	if longest > maxFenceLen {
+		longest = maxFenceLen
 	}
 	return strings.Repeat("`", longest+1)
 }
