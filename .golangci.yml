@@ -15,3 +15,5 @@ linters:
   settings:
     goconst:
       ignore-tests: true
+      ignore-string-values:
+        - "^[a-z]+$"
