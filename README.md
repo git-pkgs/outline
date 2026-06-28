@@ -5,7 +5,7 @@ Function and method bodies are dropped; signatures, types, comments and imports
 are kept. Unsupported file types pass through unchanged.
 
 Pure Go, no CGo. Parsing is done by [gotreesitter], file selection respects
-`.gitignore` via [git-pkgs/gitignore].
+`.gitignore` via [git-pkgs/gitignore]. Full API docs are on [pkg.go.dev].
 
 ```go
 import "github.com/git-pkgs/outline"
@@ -58,6 +58,12 @@ and `Result.XML(w)` write the packed document.
 `Tree(paths []string) string` renders a box-drawing directory tree from a flat
 path list.
 
+`Supported(filename string) bool` reports whether a file's extension maps to a
+language with an outlining query.
+
+`SetParseTimeout(d time.Duration)` overrides the per-file parse timeout
+(default 1s). Must be called before the first `Outline` or `Pack` call.
+
 ## Languages
 
 35 languages have body-stripping queries: Go, Ruby, Python, JavaScript,
@@ -65,26 +71,19 @@ TypeScript/TSX, Rust, Java, C, C++, C#, PHP, Kotlin, Swift, Scala, Dart,
 Elixir, Erlang, Haskell, Clojure, Perl, Lua, R, Julia, OCaml, F#, Crystal, Nim,
 Zig, D, Groovy, HCL/Terraform, Starlark/Bazel, CMake, Bash and Make.
 gotreesitter ships ~200 grammars so adding a language means writing one `.scm`
-query file.
-
-## Compared to repomix
-
-This is roughly the `--compress` core of [repomix] reimplemented in Go. On the
-same inputs it produces equivalent declaration coverage, preserves indentation
-(repomix strips it), and avoids a few cases where repomix leaks function bodies
-in Ruby and Python. It does not do token counting, secret scanning, or remote
-cloning; those belong elsewhere in git-pkgs.
+query file. `cmd/outline-compare -dump <lang>` prints the S-expression tree for
+stdin and is the easiest way to work out what to capture.
 
 ## Performance
 
-On an M1 Pro, outlining runs at ~2.5 MB/s per core and scales linearly across
-cores via a parser pool. Packing a ~40-file Go module takes about 45ms. The
-bottleneck is gotreesitter's full-parse path; our chunk extraction and
-rendering are negligible by comparison.
+On an M1 Pro, outlining runs at ~6 MB/s per core and reaches ~36 MB/s across
+all eight via the parser pool. Packing a 600-file repo takes about 34ms; the
+Markdown render of that result is ~140µs. Almost all the time is in
+gotreesitter's full-parse path; chunk extraction and rendering barely register.
 
 [gotreesitter]: https://github.com/odvcencio/gotreesitter
 [git-pkgs/gitignore]: https://github.com/git-pkgs/gitignore
-[repomix]: https://github.com/yamadashy/repomix
+[pkg.go.dev]: https://pkg.go.dev/github.com/git-pkgs/outline
 
 ## License
 
