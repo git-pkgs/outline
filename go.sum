@@ -1,4 +1,4 @@
 github.com/git-pkgs/gitignore v1.2.0 h1:7vdR8/SvF31dvXqIdC1bKgCvyySefXuN8aY3xJLuFaM=
 github.com/git-pkgs/gitignore v1.2.0/go.mod h1:Lr0XwhbvP071rZF/zIIhkY1gEhFDoWHH91lngwLpeUg=
-github.com/odvcencio/gotreesitter v0.21.0 h1:ews6dnPac/UnMQ4PCTgxpUZb04I9fnEGKINmrHZuOpc=
-github.com/odvcencio/gotreesitter v0.21.0/go.mod h1:hBVkghd0paaYAVwd2087vfwdeU984bQbMo9LvpE0moo=
+github.com/odvcencio/gotreesitter v0.36.0 h1:WN9pMlzIEOcDoeWDSSeNHC9zpPi7kcZ66sYmf7eknDY=
+github.com/odvcencio/gotreesitter v0.36.0/go.mod h1:hBVkghd0paaYAVwd2087vfwdeU984bQbMo9LvpE0moo=
