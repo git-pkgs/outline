@@ -1,22 +1,20 @@
 package outline
 
 import (
-	"bytes"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
 	"sort"
 	"sync"
-	"unicode/utf8"
 
 	"github.com/git-pkgs/gitignore"
+	"github.com/git-pkgs/magic"
 )
 
 const (
 	defaultMaxFileSize = 1 << 20
 	defaultMaxFiles    = 10000
-	binarySniffLen     = 8192
 )
 
 // Options configures Pack.
@@ -203,7 +201,7 @@ func readFile(root, path string, opts Options) File {
 		f.Skipped = "unreadable"
 		return f
 	}
-	if isBinary(data) {
+	if !isPackableText(data) {
 		f.Skipped = "binary"
 		return f
 	}
@@ -222,10 +220,8 @@ func readFile(root, path string, opts Options) File {
 	return f
 }
 
-func isBinary(data []byte) bool {
-	n := min(len(data), binarySniffLen)
-	if bytes.IndexByte(data[:n], 0) >= 0 {
-		return true
-	}
-	return !utf8.Valid(data[:n])
+func isPackableText(data []byte) bool {
+	result := magic.Detect(data)
+	return result.Kind == magic.KindText &&
+		(result.Encoding == "" || result.Encoding == "utf-8")
 }

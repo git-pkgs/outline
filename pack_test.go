@@ -29,6 +29,7 @@ func setupRepo(t *testing.T) string {
 	writeFile(t, root, "node_modules/left-pad/index.js", "module.exports = pad")
 	writeFile(t, root, "vendor/thing.go", "package thing")
 	writeFile(t, root, "logo.png", "\x89PNG\r\n\x1a\n\x00\x00")
+	writeFile(t, root, "document.pdf", "%PDF-1.7\n")
 	writeFile(t, root, "huge.txt", strings.Repeat("x", 2000))
 	return root
 }
@@ -84,6 +85,9 @@ func TestPack(t *testing.T) {
 
 	if f := files["logo.png"]; f.Skipped != "binary" {
 		t.Errorf("logo.png skip = %q, want binary", f.Skipped)
+	}
+	if f := files["document.pdf"]; f.Skipped != "binary" {
+		t.Errorf("document.pdf skip = %q, want binary", f.Skipped)
 	}
 	if f := files["huge.txt"]; f.Skipped != "too-large" {
 		t.Errorf("huge.txt skip = %q, want too-large", f.Skipped)
@@ -150,20 +154,34 @@ func TestPackUserIgnore(t *testing.T) {
 	}
 }
 
-func TestIsBinary(t *testing.T) {
+func TestIsPackableText(t *testing.T) {
+	const previousProbeSize = 8 << 10
+
 	cases := []struct {
+		name string
 		data []byte
 		want bool
 	}{
-		{[]byte("hello world"), false},
-		{[]byte("hello\x00world"), true},
-		{[]byte{0xff, 0xfe, 0x00}, true},
-		{[]byte("日本語"), false},
-		{nil, false},
+		{name: "ASCII", data: []byte("hello world"), want: true},
+		{name: "NUL", data: []byte("hello\x00world"), want: false},
+		{name: "PNG without NUL", data: []byte("\x89PNG\r\n\x1a\n"), want: false},
+		{name: "disallowed control", data: []byte("hello\x01world"), want: false},
+		{name: "invalid UTF-8", data: []byte{0xff}, want: false},
+		{
+			name: "NUL after old probe",
+			data: append([]byte(strings.Repeat("a", previousProbeSize)), 0),
+			want: false,
+		},
+		{name: "UTF-16LE", data: []byte{0xff, 0xfe, 't', 0, 'e', 0, 'x', 0, 't', 0}, want: false},
+		{name: "UTF-16BE", data: []byte{0xfe, 0xff, 0, 't', 0, 'e', 0, 'x', 0, 't'}, want: false},
+		{name: "Unicode", data: []byte("日本語"), want: true},
+		{name: "empty", data: nil, want: true},
 	}
 	for _, c := range cases {
-		if got := isBinary(c.data); got != c.want {
-			t.Errorf("isBinary(%q) = %v, want %v", c.data, got, c.want)
-		}
+		t.Run(c.name, func(t *testing.T) {
+			if got := isPackableText(c.data); got != c.want {
+				t.Errorf("isPackableText(%q) = %v, want %v", c.data, got, c.want)
+			}
+		})
 	}
 }
