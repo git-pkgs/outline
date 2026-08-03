@@ -37,12 +37,13 @@ func SetParseTimeout(d time.Duration) {
 }
 
 type lang struct {
-	name  string
-	load  func() *ts.Language
-	pool  *ts.ParserPool
-	query *ts.Query
-	once  sync.Once
-	err   error
+	name     string
+	load     func() *ts.Language
+	pool     *ts.ParserPool
+	query    *ts.Query
+	symQuery *ts.Query
+	once     sync.Once
+	err      error
 }
 
 func (l *lang) init() {
@@ -56,6 +57,12 @@ func (l *lang) init() {
 		l.query, l.err = ts.NewQuery(string(src), tsLang)
 		if l.err != nil {
 			return
+		}
+		if src, err := queryFS.ReadFile("queries/" + l.name + ".symbols.scm"); err == nil {
+			l.symQuery, l.err = ts.NewQuery(string(src), tsLang)
+			if l.err != nil {
+				return
+			}
 		}
 		l.pool = ts.NewParserPool(tsLang, ts.WithParserPoolTimeoutMicros(parseTimeoutMicros))
 	})
