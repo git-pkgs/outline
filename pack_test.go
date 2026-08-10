@@ -69,6 +69,9 @@ func TestPack(t *testing.T) {
 		if strings.Contains(f.Content, "fmt.Printf") {
 			t.Error("main.go outline leaked body")
 		}
+		if !hasSymbol(f.Symbols, Symbol{Name: "SayHello", Kind: "func", Line: 31, Exported: true}) {
+			t.Errorf("main.go symbols = %#v", f.Symbols)
+		}
 	}
 
 	if f, ok := files["lib/user.rb"]; !ok || !f.Outlined {
@@ -117,6 +120,18 @@ func TestPackNoCompress(t *testing.T) {
 	if !strings.Contains(f.Content, "fmt.Printf") {
 		t.Error("full content should include body")
 	}
+	if len(f.Symbols) != 0 {
+		t.Errorf("symbols populated without outlining: %#v", f.Symbols)
+	}
+}
+
+func hasSymbol(symbols []Symbol, want Symbol) bool {
+	for _, symbol := range symbols {
+		if symbol == want {
+			return true
+		}
+	}
+	return false
 }
 
 func TestPackMaxFiles(t *testing.T) {

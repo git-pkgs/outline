@@ -21,3 +21,11 @@
 (class_definition
   body: (block
     (string) @keep))
+
+(class_definition
+  name: (identifier) @symbol.name) @symbol.class
+(function_definition
+  name: (identifier) @symbol.name) @symbol.func
+(module
+  (assignment
+    left: (identifier) @symbol.name) @symbol.var)

@@ -20,3 +20,20 @@
 (getter_signature) @keep
 (setter_signature) @keep
 (type_alias) @keep
+
+(class_definition
+  name: (identifier) @symbol.name) @symbol.class
+(mixin_declaration
+  .
+  (mixin)
+  .
+  (identifier) @symbol.name) @symbol.type
+(extension_declaration
+  name: (identifier) @symbol.name) @symbol.type
+(enum_declaration
+  name: (identifier) @symbol.name) @symbol.type
+(type_alias
+  .
+  (type_identifier) @symbol.name) @symbol.type
+(function_signature
+  name: (identifier) @symbol.name) @symbol.func

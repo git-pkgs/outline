@@ -22,3 +22,19 @@
 (function_declaration) @keep
 
 (secondary_constructor) @keep
+
+(class_declaration
+  .
+  (type_identifier) @symbol.name) @symbol.class
+(object_declaration
+  .
+  (type_identifier) @symbol.name) @symbol.type
+(type_alias
+  .
+  (type_identifier) @symbol.name) @symbol.type
+(property_declaration
+  (variable_declaration
+    (simple_identifier) @symbol.name)) @symbol.var
+(function_declaration
+  .
+  (simple_identifier) @symbol.name) @symbol.func

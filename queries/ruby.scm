@@ -29,3 +29,14 @@
 (call
   method: (identifier) @_m
   (#match? @_m "^(require|require_relative|load|autoload|attr_reader|attr_writer|attr_accessor|include|extend|prepend)$")) @keep
+
+(assignment
+  left: (constant) @symbol.name) @symbol.const
+(class
+  name: (_) @symbol.name) @symbol.class
+(module
+  name: (_) @symbol.name) @symbol.type
+(method
+  name: [(identifier) (constant)] @symbol.name) @symbol.func
+(singleton_method
+  name: [(identifier) (constant)] @symbol.name) @symbol.func

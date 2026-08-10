@@ -28,3 +28,16 @@
 
 (constructor_declaration
   body: (constructor_body) @body) @signature
+
+(class_declaration
+  name: (identifier) @symbol.name) @symbol.class
+(interface_declaration
+  name: (identifier) @symbol.name) @symbol.type
+(enum_declaration
+  name: (identifier) @symbol.name) @symbol.type
+(record_declaration
+  name: (identifier) @symbol.name) @symbol.type
+(annotation_type_declaration
+  name: (identifier) @symbol.name) @symbol.type
+(method_declaration
+  name: (identifier) @symbol.name) @symbol.func

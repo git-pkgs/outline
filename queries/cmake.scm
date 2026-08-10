@@ -15,3 +15,14 @@
   (if_condition) @signature)
 (source_file
   (foreach_loop) @signature)
+
+(function_def
+  (function_command
+    (argument_list
+      .
+      (argument) @symbol.name))) @symbol.func
+(macro_def
+  (macro_command
+    (argument_list
+      .
+      (argument) @symbol.name))) @symbol.func

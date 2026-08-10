@@ -16,3 +16,9 @@
 
 (test_declaration
   body: (block) @body) @signature
+
+(variable_declaration
+  .
+  (identifier) @symbol.name) @symbol.var
+(function_declaration
+  name: (identifier) @symbol.name) @symbol.func

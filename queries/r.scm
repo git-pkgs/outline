@@ -11,3 +11,10 @@
 (binary_operator
   lhs: (identifier)
   rhs: (_)) @keep
+
+(binary_operator
+  lhs: (identifier) @symbol.name
+  rhs: (function_definition)) @symbol.func
+(binary_operator
+  lhs: (identifier) @symbol.name
+  rhs: (_)) @symbol.var

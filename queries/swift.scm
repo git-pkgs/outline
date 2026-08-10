@@ -25,3 +25,23 @@
   body: (function_body) @body) @signature
 (deinit_declaration
   body: (function_body) @body) @signature
+
+(class_declaration
+  (modifiers)?
+  .
+  (type_identifier) @symbol.name) @symbol.class
+(protocol_declaration
+  (modifiers)?
+  .
+  (type_identifier) @symbol.name) @symbol.type
+(typealias_declaration
+  (modifiers)?
+  .
+  (type_identifier) @symbol.name) @symbol.type
+(property_declaration
+  (pattern
+    (simple_identifier) @symbol.name)) @symbol.var
+(function_declaration
+  (modifiers)?
+  .
+  (simple_identifier) @symbol.name) @symbol.func

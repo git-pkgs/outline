@@ -41,6 +41,7 @@ type File struct {
 	Content  string
 	Language string
 	Outlined bool
+	Symbols  []Symbol // populated when Outlined is true
 	Size     int64
 	Skipped  string // reason content was omitted, e.g. "binary", "too-large"
 }
@@ -208,10 +209,11 @@ func readFile(root, path string, opts Options) File {
 
 	if opts.Compress {
 		if l, ok := detect(path); ok {
-			if out, ok := Outline(data, path); ok {
+			if out, symbols, ok := outlineFile(data, path); ok {
 				f.Content = out
 				f.Outlined = true
 				f.Language = l.name
+				f.Symbols = symbols
 				return f
 			}
 		}

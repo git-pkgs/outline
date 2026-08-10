@@ -13,3 +13,9 @@
     (#match? @_c "^(source|export|set|shopt|alias|declare|readonly|local)$")) @keep)
 (program
   (declaration_command) @keep)
+
+(function_definition
+  name: (word) @symbol.name) @symbol.func
+(program
+  (variable_assignment
+    name: (variable_name) @symbol.name) @symbol.var)

@@ -20,3 +20,33 @@
 (assignment
   (call_expression)
   (_)) @keep
+
+(module_definition
+  (identifier) @symbol.name) @symbol.type
+(struct_definition
+  (type_head
+    (identifier) @symbol.name)) @symbol.type
+(abstract_definition
+  (type_head
+    (identifier) @symbol.name)) @symbol.type
+(primitive_definition
+  (type_head
+    (identifier) @symbol.name)) @symbol.type
+(const_statement
+  (assignment
+    (identifier) @symbol.name)) @symbol.const
+(function_definition
+  (signature
+    (call_expression
+      .
+      (identifier) @symbol.name))) @symbol.func
+(macro_definition
+  (signature
+    (call_expression
+      .
+      (identifier) @symbol.name))) @symbol.func
+(assignment
+  .
+  (call_expression
+    .
+    (identifier) @symbol.name)) @symbol.func

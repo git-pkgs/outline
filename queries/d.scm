@@ -22,3 +22,19 @@
   (function_body
     (block_statement) @body)) @signature
 (function_declaration) @keep
+
+(struct_declaration
+  (identifier) @symbol.name) @symbol.type
+(class_declaration
+  (identifier) @symbol.name) @symbol.class
+(interface_declaration
+  (identifier) @symbol.name) @symbol.type
+(union_declaration
+  (identifier) @symbol.name) @symbol.type
+(enum_declaration
+  (identifier) @symbol.name) @symbol.type
+(alias_declaration
+  (alias_initializer
+    (identifier) @symbol.name)) @symbol.type
+(function_declaration
+  (identifier) @symbol.name) @symbol.func

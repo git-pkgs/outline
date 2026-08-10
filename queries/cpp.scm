@@ -33,3 +33,26 @@
 
 (function_definition
   body: (compound_statement) @body) @signature
+
+(namespace_definition
+  name: (namespace_identifier) @symbol.name) @symbol.type
+(alias_declaration
+  name: (type_identifier) @symbol.name) @symbol.type
+(type_definition
+  (type_identifier) @symbol.name) @symbol.type
+(class_specifier
+  name: (type_identifier) @symbol.name) @symbol.class
+(struct_specifier
+  name: (type_identifier) @symbol.name) @symbol.type
+(union_specifier
+  name: (type_identifier) @symbol.name) @symbol.type
+(enum_specifier
+  name: (type_identifier) @symbol.name) @symbol.type
+(declaration
+  declarator: (identifier) @symbol.name) @symbol.var
+(declaration
+  declarator: (init_declarator
+    declarator: (identifier) @symbol.name)) @symbol.var
+(function_definition
+  declarator: (function_declarator
+    declarator: (identifier) @symbol.name)) @symbol.func

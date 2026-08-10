@@ -16,3 +16,10 @@
 
 (function_definition
   body: (block) @body) @signature
+
+(module
+  (expression_statement
+    (assignment
+      left: (identifier) @symbol.name) @symbol.var))
+(function_definition
+  name: (identifier) @symbol.name) @symbol.func
