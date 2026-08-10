@@ -14,3 +14,13 @@
 (fun_decl
   (function_clause
     body: (clause_body) @body)) @signature
+
+(record_decl
+  name: (atom) @symbol.name) @symbol.type
+(type_alias
+  (type_name
+    (atom) @symbol.name)) @symbol.type
+(fun_decl
+  (function_clause
+    .
+    (atom) @symbol.name)) @symbol.func

@@ -7,3 +7,6 @@
 
 (subroutine_declaration_statement
   body: (block) @body) @signature
+
+(subroutine_declaration_statement
+  name: (bareword) @symbol.name) @symbol.func

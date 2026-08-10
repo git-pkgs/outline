@@ -37,12 +37,13 @@ func SetParseTimeout(d time.Duration) {
 }
 
 type lang struct {
-	name  string
-	load  func() *ts.Language
-	pool  *ts.ParserPool
-	query *ts.Query
-	once  sync.Once
-	err   error
+	name     string
+	load     func() *ts.Language
+	language *ts.Language
+	pool     *ts.ParserPool
+	query    *ts.Query
+	once     sync.Once
+	err      error
 }
 
 func (l *lang) init() {
@@ -52,12 +53,12 @@ func (l *lang) init() {
 			l.err = err
 			return
 		}
-		tsLang := l.load()
-		l.query, l.err = ts.NewQuery(string(src), tsLang)
+		l.language = l.load()
+		l.query, l.err = ts.NewQuery(string(src), l.language)
 		if l.err != nil {
 			return
 		}
-		l.pool = ts.NewParserPool(tsLang, ts.WithParserPoolTimeoutMicros(parseTimeoutMicros))
+		l.pool = ts.NewParserPool(l.language, ts.WithParserPoolTimeoutMicros(parseTimeoutMicros))
 	})
 }
 
@@ -212,34 +213,47 @@ type chunk struct {
 // and comments are kept, function bodies are dropped. Returns the outline and
 // true if the file's language is supported, otherwise "", false.
 func Outline(src []byte, filename string) (string, bool) {
+	out, _, ok := outlineSource(src, filename, false)
+	return out, ok
+}
+
+func outlineFile(src []byte, filename string) (string, []Symbol, bool) {
+	return outlineSource(src, filename, true)
+}
+
+func outlineSource(src []byte, filename string, collectSymbols bool) (string, []Symbol, bool) {
 	l, ok := detect(filename)
 	if !ok {
-		return "", false
+		return "", nil, false
 	}
 	l.init()
 	if l.err != nil {
-		return "", false
+		return "", nil, false
 	}
 
 	tree, err := l.pool.Parse(src)
 	if err != nil || tree == nil {
-		return "", false
+		return "", nil, false
 	}
 	defer tree.Release()
 
 	if tree.ParseStoppedEarly() {
-		return "", false
+		return "", nil, false
 	}
 
 	lineStart, lineEnd := indexLines(src)
 	matches := l.query.Execute(tree)
+	var symbols []Symbol
+	if collectSymbols {
+		symbols = extractSymbols(src, l, tree.RootNode(), matches)
+	}
 
 	chunks := make([]chunk, 0, len(matches))
 	for _, m := range matches {
 		chunks = appendMatch(chunks, m, lineStart, lineEnd)
 	}
 	if len(chunks) == 0 {
-		return "", true
+		return "", symbols, true
 	}
 
 	sort.Slice(chunks, func(i, j int) bool {
@@ -260,7 +274,7 @@ func Outline(src []byte, filename string) (string, bool) {
 		}
 		b.Write(bytes.TrimRight(src[c.startOff:c.endOff], " \t\n"))
 	}
-	return b.String(), true
+	return b.String(), symbols, true
 }
 
 // appendMatch converts a query match into kept line ranges. Each @keep

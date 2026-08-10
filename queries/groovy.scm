@@ -12,3 +12,10 @@
 (function_definition
   (closure) @body) @signature
 (function_declaration) @keep
+
+(class_definition
+  name: (identifier) @symbol.name) @symbol.class
+(function_definition
+  function: (identifier) @symbol.name) @symbol.func
+(function_declaration
+  function: (identifier) @symbol.name) @symbol.func

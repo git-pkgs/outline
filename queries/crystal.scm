@@ -20,3 +20,24 @@
 (call
   method: (identifier) @_m
   (#match? @_m "^(getter|setter|property|include|extend)$")) @keep
+
+(class_def
+  (constant) @symbol.name) @symbol.class
+(module_def
+  (constant) @symbol.name) @symbol.type
+(struct_def
+  (constant) @symbol.name) @symbol.type
+(enum_def
+  .
+  (constant) @symbol.name) @symbol.type
+(const_assign
+  (constant) @symbol.name) @symbol.const
+(alias
+  .
+  (constant) @symbol.name) @symbol.type
+(method_def
+  .
+  [(identifier) (constant)] @symbol.name) @symbol.func
+(abstract_method_def
+  .
+  [(identifier) (constant)] @symbol.name) @symbol.func

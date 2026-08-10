@@ -32,3 +32,20 @@
   body: (block) @body) @signature
 (local_function_statement
   body: (block) @body) @signature
+
+(class_declaration
+  name: (identifier) @symbol.name) @symbol.class
+(struct_declaration
+  (identifier) @symbol.name) @symbol.type
+(record_declaration
+  (identifier) @symbol.name) @symbol.type
+(interface_declaration
+  name: (identifier) @symbol.name) @symbol.type
+(enum_declaration
+  name: (identifier) @symbol.name) @symbol.type
+(delegate_declaration
+  name: (identifier) @symbol.name) @symbol.type
+(method_declaration
+  name: (identifier) @symbol.name) @symbol.func
+(local_function_statement
+  name: (identifier) @symbol.name) @symbol.func

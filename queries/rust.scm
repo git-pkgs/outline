@@ -29,3 +29,24 @@
   body: (block) @body) @signature
 (function_item !body) @keep
 (function_signature_item) @keep
+
+(mod_item
+  name: (identifier) @symbol.name) @symbol.type
+(struct_item
+  name: (type_identifier) @symbol.name) @symbol.type
+(enum_item
+  name: (type_identifier) @symbol.name) @symbol.type
+(union_item
+  name: (type_identifier) @symbol.name) @symbol.type
+(type_item
+  name: (type_identifier) @symbol.name) @symbol.type
+(trait_item
+  name: (type_identifier) @symbol.name) @symbol.type
+(const_item
+  name: (identifier) @symbol.name) @symbol.const
+(static_item
+  name: (identifier) @symbol.name) @symbol.var
+(function_item
+  name: (identifier) @symbol.name) @symbol.func
+(function_signature_item
+  name: (identifier) @symbol.name) @symbol.func

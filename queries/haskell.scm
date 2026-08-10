@@ -21,3 +21,25 @@
   (match) @body) @signature
 (function
   (match) @body) @signature
+
+(data_type
+  .
+  (name) @symbol.name) @symbol.type
+(newtype
+  .
+  (name) @symbol.name) @symbol.type
+(type_synomym
+  .
+  (name) @symbol.name) @symbol.type
+(type_family
+  .
+  (name) @symbol.name) @symbol.type
+(class
+  .
+  (name) @symbol.name) @symbol.type
+(bind
+  .
+  (variable) @symbol.name) @symbol.var
+(function
+  .
+  (variable) @symbol.name) @symbol.func

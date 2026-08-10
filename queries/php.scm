@@ -23,3 +23,16 @@
 
 (function_definition
   body: (compound_statement) @body) @signature
+
+(class_declaration
+  name: (name) @symbol.name) @symbol.class
+(interface_declaration
+  name: (name) @symbol.name) @symbol.type
+(trait_declaration
+  name: (name) @symbol.name) @symbol.type
+(enum_declaration
+  name: (name) @symbol.name) @symbol.type
+(function_definition
+  name: (name) @symbol.name) @symbol.func
+(method_declaration
+  name: (name) @symbol.name) @symbol.func

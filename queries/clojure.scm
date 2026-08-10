@@ -25,3 +25,24 @@
   .
   (sym_lit) @_head
   (#match? @_head "^(defn|defn-|defmacro|defmulti|defmethod|defprotocol|defrecord|deftype|definterface)$")) @keep
+
+(list_lit
+  .
+  (sym_lit) @_head
+  .
+  (sym_lit) @symbol.name
+  (#match? @_head "^(def|defonce|declare)$")) @symbol.var
+
+(list_lit
+  .
+  (sym_lit) @_head
+  .
+  (sym_lit) @symbol.name
+  (#match? @_head "^(defn|defn-|defmacro|defmulti|defmethod)$")) @symbol.func
+
+(list_lit
+  .
+  (sym_lit) @_head
+  .
+  (sym_lit) @symbol.name
+  (#match? @_head "^(defprotocol|defrecord|deftype|definterface)$")) @symbol.type
