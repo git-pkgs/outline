@@ -65,9 +65,10 @@ if !ok {
 refs, _ := outline.Refs(src, "app.py", []string{"flask", "f"})
 ```
 
-For both functions, false means the language is unsupported. A true result
-with an empty slice means the language is supported but the file contains no
-matches. Import extraction currently covers Go, Ruby, Python, JavaScript,
+For both functions, false means the language is unsupported or parsing did not
+complete, including a parse timeout. A true result with an empty slice means
+the language is supported but the file contains no matches. Import and
+reference extraction currently cover Go, Ruby, Python, JavaScript,
 TypeScript/TSX, Rust, PHP, and Elixir.
 
 `Pack(root string, opts Options) (*Result, error)` walks `root`, applies
