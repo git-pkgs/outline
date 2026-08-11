@@ -89,13 +89,13 @@ func TestHyrumLanguageRefs(t *testing.T) {
 	}{
 		{
 			filename: "main.go",
-			src: "package main\nfunc f() { alias.Member(); other.Member() }\n" +
-				"var v alias.Type = alias.Type{}\n",
+			src: "package main\nvar v alias.Type = alias.Type{}\n" +
+				"func f() { alias.Member(); other.Member() }\n",
 			receivers: []string{"alias"},
 			want: []Ref{
-				{Receiver: "alias", Member: "Member", Line: 2},
-				{Receiver: "alias", Member: "Type", Line: 3},
-				{Receiver: "alias", Member: "Type", Line: 3},
+				{Receiver: "alias", Member: "Type", Line: 2},
+				{Receiver: "alias", Member: "Type", Line: 2},
+				{Receiver: "alias", Member: "Member", Line: 3},
 			},
 		},
 		{
