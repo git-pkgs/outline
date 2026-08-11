@@ -81,7 +81,7 @@ func TestRegistryLanguageRefs(t *testing.T) {
 		},
 		{
 			filename:  "app.d",
-			src:       "void f() { io.readText(\"x\"); auto x = io.value; other.readText(\"x\"); }\n",
+			src:       "void f() { io . readText(\"x\"); auto x = io.value; other.readText(\"x\"); }\n",
 			receivers: []string{"io"},
 			want: []Ref{
 				{Receiver: "io", Member: "readText", Line: 1},

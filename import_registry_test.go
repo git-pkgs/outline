@@ -90,11 +90,13 @@ require "Path/Tiny.pm";
 			src: `local json = require("cjson")
 local inspect = require "inspect"
 require("side_effect")
+M.json = require("assigned_field")
 `,
 			want: []Import{
 				{Module: "cjson", Kind: ImportModule, Names: []Name{{Alias: "json"}}, Line: 1},
 				{Module: "inspect", Kind: ImportModule, Names: []Name{{Alias: "inspect"}}, Line: 2},
 				{Module: "side_effect", Kind: ImportSideEffect, Line: 3},
+				{Module: "assigned_field", Kind: ImportSideEffect, Line: 4},
 			},
 		},
 		{

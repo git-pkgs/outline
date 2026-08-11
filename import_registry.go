@@ -202,9 +202,11 @@ func luaImports(src []byte, language *ts.Language, root *ts.Node) []Import {
 			}
 			variables := firstDescendantType(assignment, language, "variable_list")
 			if variables != nil && variables.NamedChildCount() == 1 {
-				aliasNode := firstDescendantType(variables, language, "identifier")
-				imported.Kind = ImportModule
-				imported.Names = []Name{{Alias: aliasNode.Text(src)}}
+				aliasNode := variables.NamedChild(0)
+				if aliasNode.Type(language) == "identifier" {
+					imported.Kind = ImportModule
+					imported.Names = []Name{{Alias: aliasNode.Text(src)}}
+				}
 			}
 		}
 		imports = append(imports, imported)

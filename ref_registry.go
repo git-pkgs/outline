@@ -102,11 +102,11 @@ func dRefs(src []byte, language *ts.Language, root *ts.Node, wanted map[string]b
 		if index <= 0 || index == len(value)-1 {
 			return
 		}
-		receiver := value[:index]
+		receiver := strings.TrimSpace(value[:index])
 		if wanted[receiver] {
 			refs = append(refs, Ref{
 				Receiver: receiver,
-				Member:   value[index+1:],
+				Member:   strings.TrimSpace(value[index+1:]),
 				Line:     sourceLine(node),
 			})
 		}

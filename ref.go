@@ -117,6 +117,9 @@ func memberRefsWithFields(
 		var member *ts.Node
 		if memberField != "" {
 			member = node.ChildByFieldName(memberField, language)
+			if member == nil {
+				return
+			}
 		}
 		if receiver == nil {
 			receiver = node.NamedChild(0)
