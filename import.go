@@ -6,7 +6,10 @@ import (
 	ts "github.com/odvcencio/gotreesitter"
 )
 
-const javascriptCallExpression = "call_expression"
+const (
+	importStatement          = "import_statement"
+	javascriptCallExpression = "call_expression"
+)
 
 // Imports returns structured imports from one source file. The second return
 // is false when the file's language or syntax tree is unsupported.
@@ -32,6 +35,30 @@ func Imports(src []byte, filename string) ([]Import, bool) {
 		return phpImports(src, l.language, tree.RootNode()), true
 	case "elixir":
 		return elixirImports(src, l.language, tree.RootNode()), true
+	case "dart":
+		return dartImports(src, l.language, tree.RootNode()), true
+	case "swift":
+		return swiftImports(src, l.language, tree.RootNode()), true
+	case "haskell":
+		return haskellImports(src, l.language, tree.RootNode()), true
+	case "perl":
+		return perlImports(src, l.language, tree.RootNode()), true
+	case "lua":
+		return luaImports(src, l.language, tree.RootNode()), true
+	case "r":
+		return rImports(src, l.language, tree.RootNode()), true
+	case "julia":
+		return juliaImports(src, l.language, tree.RootNode()), true
+	case "ocaml":
+		return ocamlImports(src, l.language, tree.RootNode()), true
+	case "crystal":
+		return crystalImports(src, l.language, tree.RootNode()), true
+	case "nim":
+		return nimImports(src, l.language, tree.RootNode()), true
+	case "zig":
+		return zigImports(src, l.language, tree.RootNode()), true
+	case "d":
+		return dImports(src, l.language, tree.RootNode()), true
 	default:
 		return nil, false
 	}
@@ -41,7 +68,7 @@ func pythonImports(src []byte, language *ts.Language, root *ts.Node) []Import {
 	var imports []Import
 	walkNamed(root, func(node *ts.Node) {
 		switch node.Type(language) {
-		case "import_statement":
+		case importStatement:
 			imports = append(imports, pythonModuleImports(src, language, node)...)
 		case "import_from_statement", "future_import_statement":
 			if imported, ok := pythonFromImport(src, language, node); ok {
@@ -132,7 +159,7 @@ func javascriptImports(src []byte, language *ts.Language, root *ts.Node) []Impor
 	var imports []Import
 	walkNamed(root, func(node *ts.Node) {
 		switch node.Type(language) {
-		case "import_statement":
+		case importStatement:
 			imports = append(imports, javascriptImportStatement(src, language, node)...)
 		case "variable_declarator":
 			if imported, ok := javascriptRequireDeclarator(src, language, node); ok {

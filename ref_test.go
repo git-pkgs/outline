@@ -61,6 +61,24 @@ func TestRefsSupportResult(t *testing.T) {
 	}
 }
 
+func TestMemberRefsMissingField(t *testing.T) {
+	t.Parallel()
+	src := []byte("WS.Server;\n")
+	language, tree, ok := parseSource(src, "app.js")
+	if !ok {
+		t.Fatal("parseSource() supported = false")
+	}
+	defer tree.Release()
+
+	got := memberRefsWithFields(
+		src, language.language, tree.RootNode(), map[string]bool{"WS": true},
+		"member_expression", "object", "missing", "identifier",
+	)
+	if len(got) != 0 {
+		t.Fatalf("memberRefsWithFields() = %#v, want no refs", got)
+	}
+}
+
 func TestHyrumLanguageRefs(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

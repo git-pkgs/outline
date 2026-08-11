@@ -69,7 +69,8 @@ For both functions, false means the language is unsupported or parsing did not
 complete, including a parse timeout. A true result with an empty slice means
 the language is supported but the file contains no matches. Import and
 reference extraction currently cover Go, Ruby, Python, JavaScript,
-TypeScript/TSX, Rust, PHP, and Elixir.
+TypeScript/TSX, Rust, PHP, Elixir, Dart, Swift, Haskell, Perl, Lua,
+R, Julia, OCaml, Crystal, Nim, Zig, and D.
 
 `Pack(root string, opts Options) (*Result, error)` walks `root`, applies
 `.gitignore` plus a built-in ignore list (vendored deps, build output,
