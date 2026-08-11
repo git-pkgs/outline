@@ -46,6 +46,30 @@ with the body elided and gaps marked by `⋮----`.
 `Outline(src []byte, filename string) (string, bool)` compresses one file. The
 second return is false if the language is not supported.
 
+`Imports(src []byte, filename string) ([]Import, bool)` extracts module imports,
+their source-language form, named imports, local aliases, and one-based source
+lines. A statement containing both default and named imports returns one value
+for each form.
+
+`Refs(src []byte, filename string, receivers []string) ([]Ref, bool)` extracts
+direct member accesses on the supplied receiver identifiers. This lets callers
+pass the local aliases returned by `Imports` without collecting unrelated
+member expressions from the file.
+
+```go
+imports, ok := outline.Imports(src, "app.py")
+if !ok {
+    return
+}
+
+refs, _ := outline.Refs(src, "app.py", []string{"flask", "f"})
+```
+
+For both functions, false means the language is unsupported. A true result
+with an empty slice means the language is supported but the file contains no
+matches. Import extraction currently covers Go, Ruby, Python, JavaScript,
+TypeScript/TSX, Rust, PHP, and Elixir.
+
 `Pack(root string, opts Options) (*Result, error)` walks `root`, applies
 `.gitignore` plus a built-in ignore list (vendored deps, build output,
 lockfiles), skips binaries and oversized files, and outlines what it can.

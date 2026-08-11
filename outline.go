@@ -222,24 +222,11 @@ func outlineFile(src []byte, filename string) (string, []Symbol, bool) {
 }
 
 func outlineSource(src []byte, filename string, collectSymbols bool) (string, []Symbol, bool) {
-	l, ok := detect(filename)
+	l, tree, ok := parseSource(src, filename)
 	if !ok {
 		return "", nil, false
 	}
-	l.init()
-	if l.err != nil {
-		return "", nil, false
-	}
-
-	tree, err := l.pool.Parse(src)
-	if err != nil || tree == nil {
-		return "", nil, false
-	}
 	defer tree.Release()
-
-	if tree.ParseStoppedEarly() {
-		return "", nil, false
-	}
 
 	lineStart, lineEnd := indexLines(src)
 	matches := l.query.Execute(tree)
@@ -275,6 +262,27 @@ func outlineSource(src []byte, filename string, collectSymbols bool) (string, []
 		b.Write(bytes.TrimRight(src[c.startOff:c.endOff], " \t\n"))
 	}
 	return b.String(), symbols, true
+}
+
+func parseSource(src []byte, filename string) (*lang, *ts.Tree, bool) {
+	l, ok := detect(filename)
+	if !ok {
+		return nil, nil, false
+	}
+	l.init()
+	if l.err != nil {
+		return nil, nil, false
+	}
+
+	tree, err := l.pool.Parse(src)
+	if err != nil || tree == nil {
+		return nil, nil, false
+	}
+	if tree.ParseStoppedEarly() {
+		tree.Release()
+		return nil, nil, false
+	}
+	return l, tree, true
 }
 
 // appendMatch converts a query match into kept line ranges. Each @keep
