@@ -35,6 +35,48 @@ func Refs(src []byte, filename string, receivers []string) ([]Ref, bool) {
 		refs = phpRefs(src, l.language, tree.RootNode(), wanted)
 	case "elixir":
 		refs = memberRefs(src, l.language, tree.RootNode(), wanted, "dot", "right", "alias")
+	case "dart":
+		refs = dartRefs(src, l.language, tree.RootNode(), wanted)
+	case "swift":
+		refs = swiftRefs(src, l.language, tree.RootNode(), wanted)
+	case "haskell":
+		refs = haskellRefs(src, l.language, tree.RootNode(), wanted)
+	case "perl":
+		refs = memberRefsWithFields(
+			src, l.language, tree.RootNode(), wanted,
+			"method_call_expression", "invocant", "method", "bareword",
+		)
+	case "lua":
+		refs = memberRefsWithFields(
+			src, l.language, tree.RootNode(), wanted,
+			"dot_index_expression", "table", "field", "identifier",
+		)
+	case "r":
+		refs = memberRefsWithFields(
+			src, l.language, tree.RootNode(), wanted,
+			"namespace_operator", "lhs", "rhs", "identifier",
+		)
+	case "julia":
+		refs = memberRefsWithFields(
+			src, l.language, tree.RootNode(), wanted,
+			"field_expression", "value", "", "identifier",
+		)
+	case "ocaml":
+		refs = ocamlRefs(src, l.language, tree.RootNode(), wanted)
+	case "crystal":
+		refs = memberRefsWithFields(
+			src, l.language, tree.RootNode(), wanted,
+			"call", "receiver", "method", "constant",
+		)
+	case "nim":
+		refs = memberRefsWithFields(
+			src, l.language, tree.RootNode(), wanted,
+			"dot_expression", "left", "right", "identifier",
+		)
+	case "zig":
+		refs = memberRefs(src, l.language, tree.RootNode(), wanted, "field_expression", "member", "identifier")
+	case "d":
+		refs = dRefs(src, l.language, tree.RootNode(), wanted)
 	default:
 		return nil, false
 	}
@@ -50,13 +92,32 @@ func memberRefs(
 	memberField string,
 	receiverType string,
 ) []Ref {
+	return memberRefsWithFields(
+		src, language, root, wanted,
+		nodeType, "object", memberField, receiverType,
+	)
+}
+
+func memberRefsWithFields(
+	src []byte,
+	language *ts.Language,
+	root *ts.Node,
+	wanted map[string]bool,
+	nodeType string,
+	receiverField string,
+	memberField string,
+	receiverType string,
+) []Ref {
 	var refs []Ref
 	walkNamed(root, func(node *ts.Node) {
 		if node.Type(language) != nodeType || node.NamedChildCount() < 2 {
 			return
 		}
-		receiver := node.ChildByFieldName("object", language)
-		member := node.ChildByFieldName(memberField, language)
+		receiver := node.ChildByFieldName(receiverField, language)
+		var member *ts.Node
+		if memberField != "" {
+			member = node.ChildByFieldName(memberField, language)
+		}
 		if receiver == nil {
 			receiver = node.NamedChild(0)
 		}
