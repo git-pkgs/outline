@@ -22,7 +22,7 @@ func Refs(src []byte, filename string, receivers []string) ([]Ref, bool) {
 	var refs []Ref
 	switch l.name {
 	case "go":
-		refs = memberRefs(src, l.language, tree.RootNode(), wanted, "selector_expression", "field", "identifier")
+		refs = goRefs(src, l.language, tree.RootNode(), wanted)
 	case "ruby":
 		refs = rubyRefs(src, l.language, tree.RootNode(), wanted)
 	case "python":

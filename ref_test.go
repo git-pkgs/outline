@@ -88,18 +88,26 @@ func TestHyrumLanguageRefs(t *testing.T) {
 		want      []Ref
 	}{
 		{
-			filename:  "main.go",
-			src:       "package main\nfunc f() { alias.Member(); other.Member() }\n",
+			filename: "main.go",
+			src: "package main\nvar v alias.Type = alias.Type{}\n" +
+				"func f() { alias.Member(); other.Member() }\n",
 			receivers: []string{"alias"},
-			want:      []Ref{{Receiver: "alias", Member: "Member", Line: 2}},
+			want: []Ref{
+				{Receiver: "alias", Member: "Type", Line: 2},
+				{Receiver: "alias", Member: "Type", Line: 2},
+				{Receiver: "alias", Member: "Member", Line: 3},
+			},
 		},
 		{
-			filename:  "app.rb",
-			src:       "Octokit::Client.new\nOctokit.configure\nOther::Client.new\n",
+			filename: "app.rb",
+			src: "Octokit::Client.new\nOctokit.configure\n" +
+				"Octokit.middleware(x, y) { |c| c.use Other }\n" +
+				"Other::Client.new\n",
 			receivers: []string{"Octokit"},
 			want: []Ref{
 				{Receiver: "Octokit", Member: "Client", Line: 1},
 				{Receiver: "Octokit", Member: "configure", Line: 2},
+				{Receiver: "Octokit", Member: "middleware", Line: 3},
 			},
 		},
 		{

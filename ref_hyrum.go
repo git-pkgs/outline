@@ -6,6 +6,39 @@ import (
 	ts "github.com/odvcencio/gotreesitter"
 )
 
+// goRefs matches package selectors in both value and type position:
+// selector_expression covers `pkg.Func()` and `pkg.Var`, qualified_type
+// covers `pkg.Type{}` and `var x pkg.Type`. A single walk keeps results in
+// source order.
+func goRefs(src []byte, language *ts.Language, root *ts.Node, wanted map[string]bool) []Ref {
+	var refs []Ref
+	walkNamed(root, func(node *ts.Node) {
+		var receiver, member *ts.Node
+		switch node.Type(language) {
+		case "selector_expression":
+			receiver = node.ChildByFieldName("operand", language)
+			member = node.ChildByFieldName("field", language)
+			if receiver == nil || receiver.Type(language) != "identifier" {
+				return
+			}
+		case "qualified_type":
+			receiver = node.ChildByFieldName("package", language)
+			member = node.ChildByFieldName("name", language)
+		default:
+			return
+		}
+		if receiver == nil || member == nil || !wanted[receiver.Text(src)] {
+			return
+		}
+		refs = append(refs, Ref{
+			Receiver: receiver.Text(src),
+			Member:   member.Text(src),
+			Line:     sourceLine(member),
+		})
+	})
+	return refs
+}
+
 func rubyRefs(src []byte, language *ts.Language, root *ts.Node, wanted map[string]bool) []Ref {
 	var refs []Ref
 	walkNamed(root, func(node *ts.Node) {
@@ -17,11 +50,14 @@ func rubyRefs(src []byte, language *ts.Language, root *ts.Node, wanted map[strin
 		switch node.Type(language) {
 		case "scope_resolution":
 			receiver = node.NamedChild(0)
-			member = node.NamedChild(node.NamedChildCount() - 1)
+			member = node.ChildByFieldName("name", language)
 		case "call":
-			if node.NamedChild(0).Type(language) == "constant" {
-				receiver = node.NamedChild(0)
-				member = node.NamedChild(node.NamedChildCount() - 1)
+			// The last named child of a call may be an argument list or a
+			// block; the method identifier is the named `method` field.
+			receiver = node.ChildByFieldName("receiver", language)
+			member = node.ChildByFieldName("method", language)
+			if receiver == nil || receiver.Type(language) != "constant" {
+				return
 			}
 		}
 		if receiver == nil || member == nil || !wanted[receiver.Text(src)] {
