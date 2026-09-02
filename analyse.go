@@ -14,10 +14,15 @@ type decl struct {
 	Kind     string
 	Line     int
 	Exported bool
+	NameAt   uint32
 	Start    uint32
 	End      uint32
 	SigEnd   uint32
 	Parent   int
+}
+
+func (d decl) symID(path string) string {
+	return SymID(path, d.NameAt)
 }
 
 // analysis is the per-file fact set that graph resolution consumes.
@@ -60,7 +65,10 @@ func extractDecls(src []byte, l *lang, matches []ts.QueryMatch) []decl {
 		if raw[i].Start != raw[j].Start {
 			return raw[i].Start < raw[j].Start
 		}
-		return raw[i].End > raw[j].End
+		if raw[i].End != raw[j].End {
+			return raw[i].End > raw[j].End
+		}
+		return raw[i].NameAt < raw[j].NameAt
 	})
 	assignParents(raw)
 	return raw
@@ -102,6 +110,7 @@ func declsFromMatch(src []byte, l *lang, m ts.QueryMatch) []decl {
 			Kind:     normalizeSymbolKind(l.name, kind, name, definition, src, l.language),
 			Line:     int(n.StartPoint().Row) + 1,
 			Exported: symbolExported(l.name, name, definition, src, l.language),
+			NameAt:   n.StartByte(),
 			Start:    start,
 			End:      end,
 			SigEnd:   sigEnd,
@@ -120,7 +129,12 @@ func assignParents(decls []decl) {
 			stack = stack[:len(stack)-1]
 		}
 		if len(stack) > 0 {
-			decls[i].Parent = stack[len(stack)-1]
+			top := stack[len(stack)-1]
+			if decls[top].Start == decls[i].Start && decls[top].End == decls[i].End {
+				decls[i].Parent = decls[top].Parent
+			} else {
+				decls[i].Parent = top
+			}
 		}
 		stack = append(stack, i)
 	}

@@ -155,7 +155,7 @@ func emitFileNodes(g *Graph, files []fileAnalysis) {
 			continue
 		}
 		for i, d := range f.a.Decls {
-			sid := SymID(f.path, d.Start)
+			sid := d.symID(f.path)
 			g.Nodes = append(g.Nodes, Node{
 				ID:        sid,
 				Kind:      d.Kind,
@@ -170,7 +170,7 @@ func emitFileNodes(g *Graph, files []fileAnalysis) {
 			})
 			from := fid
 			if d.Parent >= 0 {
-				from = SymID(f.path, f.a.Decls[d.Parent].Start)
+				from = f.a.Decls[d.Parent].symID(f.path)
 			}
 			g.Edges = append(g.Edges, Edge{
 				From: from, To: sid, Rel: RelContains, Conf: ConfExtracted,

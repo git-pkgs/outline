@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -199,6 +200,96 @@ func TestBuildGoSamePackage(t *testing.T) {
 	}
 	if n := nodeByName(g, KindExternal, "helper"); n != nil {
 		t.Errorf("spurious external node for resolved same-package call: %v", n)
+	}
+}
+
+func TestBuildGoMultiName(t *testing.T) {
+	root := t.TempDir()
+	writeFiles(t, root, map[string]string{
+		"go.mod": "module m\n",
+		"m.go":   "package m\n\nvar a, b int\n\nconst c, d = 1, 2\n",
+	})
+	g, err := Build(root, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := make(map[string]string)
+	for _, n := range g.Nodes {
+		if other, dup := seen[n.ID]; dup {
+			t.Errorf("duplicate node ID %s: %q and %q", n.ID, other, n.Name)
+		}
+		seen[n.ID] = n.Name
+	}
+	for _, name := range []string{"a", "b", "c", "d"} {
+		if nodeByName(g, KindVar, name) == nil && nodeByName(g, KindConst, name) == nil {
+			t.Errorf("missing decl node %q", name)
+		}
+	}
+	for _, e := range g.Edges {
+		if e.Rel == RelContains && e.From != FileID("m.go") && g.Node(e.From).Kind != KindFile {
+			t.Errorf("multi-name decl got non-file parent: %v", e)
+		}
+	}
+}
+
+func TestBuildPythonRelativeDistinct(t *testing.T) {
+	root := t.TempDir()
+	writeFiles(t, root, map[string]string{
+		"a/__init__.py": "",
+		"a/app.py":      "from .util import run\ndef fa(): run()\n",
+		"a/util.py":     "def run(): pass\n",
+		"b/__init__.py": "",
+		"b/app.py":      "from .util import run\ndef fb(): run()\n",
+		"b/util.py":     "def run(): pass\n",
+	})
+	g, err := Build(root, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fa := nodeByName(g, KindFunc, "fa")
+	fb := nodeByName(g, KindFunc, "fb")
+	if fa == nil || fb == nil {
+		t.Fatalf("missing fa=%v fb=%v", fa, fb)
+	}
+	target := func(from string) string {
+		for _, e := range g.Out(from) {
+			if e.Rel == RelCalls {
+				return e.To
+			}
+		}
+		return ""
+	}
+	ta, tb := target(fa.ID), target(fb.ID)
+	if !strings.Contains(ta, "a/util.py") {
+		t.Errorf("fa resolved to %q, want a/util.py", ta)
+	}
+	if !strings.Contains(tb, "b/util.py") {
+		t.Errorf("fb resolved to %q, want b/util.py", tb)
+	}
+	if ta == tb {
+		t.Errorf("both packages resolved to same target %q", ta)
+	}
+}
+
+func TestBuildExtQualifiedCanonical(t *testing.T) {
+	root := t.TempDir()
+	writeFiles(t, root, map[string]string{
+		"a.py": "import subprocess as one\ndef fa(): one.run('x')\n",
+		"b.py": "import subprocess as two\ndef fb(): two.run('x')\n",
+	})
+	g, err := Build(root, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ext := g.Node(ExtID("python", "subprocess", "run"))
+	if ext == nil {
+		t.Fatal("missing ext:python:subprocess:run node")
+	}
+	if ext.Qualified != "subprocess.run" {
+		t.Errorf("ext Qualified = %q, want subprocess.run", ext.Qualified)
+	}
+	if hits := g.Def("subprocess.run"); len(hits) != 1 || hits[0].ID != ext.ID {
+		t.Errorf("Def(subprocess.run) = %v", hits)
 	}
 }
 

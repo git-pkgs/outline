@@ -12,6 +12,7 @@ import (
 type resolver struct {
 	root  string
 	hints ResolutionHints
+	paths []string
 	files map[string]*fileAnalysis
 
 	goModule string
@@ -44,6 +45,7 @@ func newResolver(root string, files []fileAnalysis, hints ResolutionHints) *reso
 		exports: make(map[string]map[string]string),
 	}
 	for i := range files {
+		r.paths = append(r.paths, files[i].path)
 		r.files[files[i].path] = &files[i]
 	}
 	r.goModule = readGoModule(root)
@@ -65,9 +67,9 @@ func indexGoPackages(files []fileAnalysis) map[string]map[string]string {
 		if pkgs[dir] == nil {
 			pkgs[dir] = make(map[string]string)
 		}
-		for j, d := range f.a.Decls {
+		for _, d := range f.a.Decls {
 			if d.Parent == -1 {
-				pkgs[dir][d.Name] = SymID(f.path, f.a.Decls[j].Start)
+				pkgs[dir][d.Name] = d.symID(f.path)
 			}
 		}
 	}
@@ -88,18 +90,30 @@ func readGoModule(root string) string {
 	return ""
 }
 
+// moduleID returns the mod: node ID for one import. Python relative
+// imports are qualified by the importing file's directory so two
+// `from .util import x` in different packages produce distinct nodes.
+func (r *resolver) moduleID(f *fileAnalysis, imp Import) string {
+	name := imp.Module
+	if f.a.Lang == "python" && strings.HasPrefix(name, ".") {
+		name = path.Dir(f.path) + "/" + name
+	}
+	return ModID(f.a.Lang, name)
+}
+
 // emitModules creates one mod: node per distinct import, emits file→mod
 // imports edges, and resolves each module to repository files where the
 // language resolver supports it.
 func (r *resolver) emitModules(g *Graph) {
 	seen := make(map[string]bool)
-	for p, f := range r.files {
+	for _, p := range r.paths {
+		f := r.files[p]
 		if f.a == nil {
 			continue
 		}
 		fid := FileID(p)
 		for _, imp := range f.a.Imports {
-			mid := ModID(f.a.Lang, imp.Module)
+			mid := r.moduleID(f, imp)
 			if !seen[mid] {
 				seen[mid] = true
 				g.Nodes = append(g.Nodes, Node{
@@ -207,11 +221,11 @@ func (r *resolver) moduleExports(mid string) map[string]string {
 		if f == nil || f.a == nil {
 			continue
 		}
-		for i, d := range f.a.Decls {
+		for _, d := range f.a.Decls {
 			if d.Parent != -1 || !d.Exported {
 				continue
 			}
-			m[d.Name] = SymID(p, f.a.Decls[i].Start)
+			m[d.Name] = d.symID(p)
 		}
 	}
 	r.exports[mid] = m
@@ -224,13 +238,13 @@ func (r *resolver) fileScope(f *fileAnalysis) scope {
 	if f.a.Lang == "go" {
 		maps.Copy(sc.syms, r.goPkgs[path.Dir(f.path)])
 	}
-	for i, d := range f.a.Decls {
+	for _, d := range f.a.Decls {
 		if d.Parent == -1 {
-			sc.syms[d.Name] = SymID(f.path, f.a.Decls[i].Start)
+			sc.syms[d.Name] = d.symID(f.path)
 		}
 	}
 	for _, imp := range f.a.Imports {
-		mid := ModID(f.a.Lang, imp.Module)
+		mid := r.moduleID(f, imp)
 		switch imp.Kind {
 		case ImportModule, ImportNamespace, ImportDefault:
 			alias := ""
@@ -283,7 +297,8 @@ func defaultAlias(lang, module string) string {
 // edge. Unresolved targets get an ext: node.
 func (r *resolver) emitCalls(g *Graph) {
 	ext := make(map[string]bool)
-	for p, f := range r.files {
+	for _, p := range r.paths {
+		f := r.files[p]
 		if f.a == nil {
 			continue
 		}
@@ -291,14 +306,14 @@ func (r *resolver) emitCalls(g *Graph) {
 		for _, c := range f.a.Calls {
 			from := FileID(p)
 			if c.In >= 0 {
-				from = SymID(p, f.a.Decls[c.In].Start)
+				from = f.a.Decls[c.In].symID(p)
 			}
 			to, conf := r.resolveCall(f, sc, c)
 			if strings.HasPrefix(to, "ext:") && !ext[to] {
 				ext[to] = true
 				g.Nodes = append(g.Nodes, Node{
 					ID: to, Kind: KindExternal, Name: c.Name,
-					Qualified: extQualified(c),
+					Qualified: extQualified(to),
 				})
 			}
 			g.Edges = append(g.Edges, Edge{
@@ -328,11 +343,26 @@ func (r *resolver) resolveCall(f *fileAnalysis, sc scope, c Call) (string, strin
 	return ExtID(f.a.Lang, c.Receiver, c.Name), ConfInferred
 }
 
-func extQualified(c Call) string {
-	if c.Receiver == "" {
-		return c.Name
+// extQualified derives a stable display name from an ext: node ID so the
+// same external target reached via different local aliases renders the
+// same way.
+func extQualified(id string) string {
+	rest, ok := strings.CutPrefix(id, "ext:")
+	if !ok {
+		return id
 	}
-	return c.Receiver + "." + c.Name
+	if i := strings.IndexByte(rest, ':'); i >= 0 {
+		rest = rest[i+1:]
+	}
+	mod, name, ok := strings.Cut(rest, ":")
+	if !ok {
+		return idUnescape(rest)
+	}
+	mod, name = idUnescape(mod), idUnescape(name)
+	if mod == "" {
+		return name
+	}
+	return mod + "." + name
 }
 
 func modName(mid string) string {
