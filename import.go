@@ -19,46 +19,49 @@ func Imports(src []byte, filename string) ([]Import, bool) {
 		return nil, false
 	}
 	defer tree.Release()
+	return importsFor(src, l, tree.RootNode())
+}
 
+func importsFor(src []byte, l *lang, root *ts.Node) ([]Import, bool) {
 	switch l.name {
 	case "go":
-		return goImports(src, l.language, tree.RootNode()), true
+		return goImports(src, l.language, root), true
 	case "ruby":
-		return rubyImports(src, l.language, tree.RootNode()), true
+		return rubyImports(src, l.language, root), true
 	case "python":
-		return pythonImports(src, l.language, tree.RootNode()), true
+		return pythonImports(src, l.language, root), true
 	case "javascript", "typescript":
-		return javascriptImports(src, l.language, tree.RootNode()), true
+		return javascriptImports(src, l.language, root), true
 	case "rust":
-		return rustImports(src, l.language, tree.RootNode()), true
+		return rustImports(src, l.language, root), true
 	case "php":
-		return phpImports(src, l.language, tree.RootNode()), true
+		return phpImports(src, l.language, root), true
 	case "elixir":
-		return elixirImports(src, l.language, tree.RootNode()), true
+		return elixirImports(src, l.language, root), true
 	case "dart":
-		return dartImports(src, l.language, tree.RootNode()), true
+		return dartImports(src, l.language, root), true
 	case "swift":
-		return swiftImports(src, l.language, tree.RootNode()), true
+		return swiftImports(src, l.language, root), true
 	case "haskell":
-		return haskellImports(src, l.language, tree.RootNode()), true
+		return haskellImports(src, l.language, root), true
 	case "perl":
-		return perlImports(src, l.language, tree.RootNode()), true
+		return perlImports(src, l.language, root), true
 	case "lua":
-		return luaImports(src, l.language, tree.RootNode()), true
+		return luaImports(src, l.language, root), true
 	case "r":
-		return rImports(src, l.language, tree.RootNode()), true
+		return rImports(src, l.language, root), true
 	case "julia":
-		return juliaImports(src, l.language, tree.RootNode()), true
+		return juliaImports(src, l.language, root), true
 	case "ocaml":
-		return ocamlImports(src, l.language, tree.RootNode()), true
+		return ocamlImports(src, l.language, root), true
 	case "crystal":
-		return crystalImports(src, l.language, tree.RootNode()), true
+		return crystalImports(src, l.language, root), true
 	case "nim":
-		return nimImports(src, l.language, tree.RootNode()), true
+		return nimImports(src, l.language, root), true
 	case "zig":
-		return zigImports(src, l.language, tree.RootNode()), true
+		return zigImports(src, l.language, root), true
 	case "d":
-		return dImports(src, l.language, tree.RootNode()), true
+		return dImports(src, l.language, root), true
 	default:
 		return nil, false
 	}
