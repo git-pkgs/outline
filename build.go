@@ -192,6 +192,9 @@ func qualified(decls []decl, i int) string {
 }
 
 func signature(src []byte, d decl) string {
+	if int(d.Start) >= len(src) {
+		return ""
+	}
 	end := min(d.SigEnd, uint32(len(src)))
 	s := sanitise(string(src[d.Start:end]))
 	if len(s) > sigCap {

@@ -18,6 +18,12 @@ func TestIDEscape(t *testing.T) {
 		if got := idEscape(in); got != want {
 			t.Errorf("idEscape(%q) = %q, want %q", in, got, want)
 		}
+		if got := idUnescape(idEscape(in)); got != in {
+			t.Errorf("idUnescape(idEscape(%q)) = %q", in, got)
+		}
+	}
+	if got := modName(ModID("go", "a:b/c")); got != "a:b/c" {
+		t.Errorf("modName round-trip = %q", got)
 	}
 	if a, b := SymID("a:b.go", 10), SymID("a", 10); a == b {
 		t.Errorf("distinct paths collided: %q == %q", a, b)

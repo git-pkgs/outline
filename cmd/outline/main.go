@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"sort"
 	"strings"
 
 	"github.com/git-pkgs/outline"
@@ -224,7 +223,6 @@ func cmdAffected(args []string) error {
 		seeds = append(seeds, id)
 	}
 	paths := g.Affected(seeds, c.traverse())
-	sort.Slice(paths, func(i, j int) bool { return len(paths[i]) < len(paths[j]) })
 	return writePaths(g, paths, c.budget)
 }
 

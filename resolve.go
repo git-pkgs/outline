@@ -337,7 +337,7 @@ func extQualified(c Call) string {
 
 func modName(mid string) string {
 	if i := strings.LastIndexByte(mid, ':'); i >= 0 {
-		return mid[i+1:]
+		return idUnescape(mid[i+1:])
 	}
 	return mid
 }

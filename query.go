@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"slices"
+	"sort"
 )
 
 // TraverseOptions filters graph traversal.
@@ -101,17 +102,23 @@ func (g *Graph) Affected(seeds []string, opts TraverseOptions) []Path {
 			frontier = append(frontier, e.From)
 		}
 	}
-	var paths []Path
+	reached := make([]string, 0, len(prev))
 	for id, ei := range prev {
-		if ei < 0 {
-			continue
+		if ei >= 0 {
+			reached = append(reached, id)
 		}
-		var p Path
+	}
+	sort.Slice(reached, func(i, j int) bool {
+		if dist[reached[i]] != dist[reached[j]] {
+			return dist[reached[i]] < dist[reached[j]]
+		}
+		return reached[i] < reached[j]
+	})
+	paths := make([]Path, len(reached))
+	for i, id := range reached {
 		for cur := id; prev[cur] >= 0; cur = g.Edges[prev[cur]].To {
-			p = append(p, g.Edges[prev[cur]])
+			paths[i] = append(paths[i], g.Edges[prev[cur]])
 		}
-		paths = append(paths, p)
-		_ = id
 	}
 	return paths
 }

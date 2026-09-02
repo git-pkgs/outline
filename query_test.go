@@ -2,6 +2,7 @@ package outline
 
 import (
 	"bytes"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -71,6 +72,15 @@ func TestAffected(t *testing.T) {
 	paths = g.Affected([]string{"sym:x.go:d"}, TraverseOptions{Depth: 1, IncludeInferred: true})
 	if len(paths) != 1 {
 		t.Errorf("Affected depth=1 should return 1 path: %v", paths)
+	}
+
+	a := chain().Affected([]string{"sym:x.go:d"}, TraverseOptions{IncludeInferred: true})
+	b := chain().Affected([]string{"sym:x.go:d"}, TraverseOptions{IncludeInferred: true})
+	if !reflect.DeepEqual(a, b) {
+		t.Errorf("Affected order not deterministic:\n%v\n%v", a, b)
+	}
+	if len(a[0]) > len(a[len(a)-1]) {
+		t.Errorf("Affected not sorted by distance: %v", a)
 	}
 }
 

@@ -82,6 +82,11 @@ type Graph struct {
 	built bool
 }
 
+const (
+	escColon   = "%3A"
+	escPercent = "%25"
+)
+
 // idEscape encodes one path or name segment so that ':' remains a safe
 // separator in composite IDs. Only ':' and '%' are escaped.
 func idEscape(s string) string {
@@ -92,14 +97,23 @@ func idEscape(s string) string {
 	for i := 0; i < len(s); i++ {
 		switch s[i] {
 		case ':':
-			b.WriteString("%3A")
+			b.WriteString(escColon)
 		case '%':
-			b.WriteString("%25")
+			b.WriteString(escPercent)
 		default:
 			b.WriteByte(s[i])
 		}
 	}
 	return b.String()
+}
+
+// idUnescape reverses idEscape.
+func idUnescape(s string) string {
+	if strings.IndexByte(s, '%') < 0 {
+		return s
+	}
+	s = strings.ReplaceAll(s, escColon, ":")
+	return strings.ReplaceAll(s, escPercent, "%")
 }
 
 // FileID returns the node ID for a repository-relative file path.
