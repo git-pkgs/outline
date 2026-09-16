@@ -33,6 +33,9 @@ type Options struct {
 	// Concurrency is the number of files processed in parallel.
 	// Zero means runtime.NumCPU().
 	Concurrency int
+	// Resolution supplies caller-provided source roots and package hints
+	// for graph module resolution. Pack ignores it.
+	Resolution ResolutionHints
 }
 
 // File is one packed file.
