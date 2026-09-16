@@ -132,6 +132,84 @@ func main() {
 	}
 }
 
+func TestAnalyseRubyCalls(t *testing.T) {
+	src := []byte("class Worker\n" +
+		"  def run(client, uri)\n" +
+		"    File.read(\"config.yml\")\n" +
+		"    Net::HTTP.get(uri)\n" +
+		"    system(\"echo\", \"hello\")\n" +
+		"    client.get(uri)\n" +
+		"    self.finish\n" +
+		"    factory().run\n" +
+		"    `echo hi`\n" +
+		"  end\n\n" +
+		"  def finish\n" +
+		"  end\n\n" +
+		"  def self.build(name = \"default\")\n" +
+		"    new(name)\n" +
+		"  end\n" +
+		"end\n")
+	a, ok := analyse(src, "worker.rb")
+	if !ok {
+		t.Fatal("analyse returned false")
+	}
+
+	iRun, dRun := declByName(t, a.Decls, "run")
+	_, dBuild := declByName(t, a.Decls, "build")
+	for _, p := range []string{"client", "uri"} {
+		if !slices.Contains(dRun.Params, p) {
+			t.Errorf("Ruby params missing %q: %v", p, dRun.Params)
+		}
+	}
+	if !dBuild.Singleton {
+		t.Error("self.build should be a singleton method")
+	}
+	if dBuild.Owner != "self" {
+		t.Errorf("self.build owner = %q", dBuild.Owner)
+	}
+	if !slices.Contains(dBuild.Params, "name") {
+		t.Errorf("Ruby optional param missing: %v", dBuild.Params)
+	}
+
+	read := callByName(t, a.Calls, "read")
+	if read.Receiver != "File" || read.ReceiverKind != ReceiverConstant || read.In != iRun {
+		t.Errorf("File.read: receiver=%q kind=%q in=%d", read.Receiver, read.ReceiverKind, read.In)
+	}
+	if read.End <= read.Start || len(read.Arguments) != 1 || read.Arguments[0].Kind != "string" {
+		t.Errorf("File.read call facts = %#v", read)
+	}
+
+	get := callByName(t, a.Calls, "get")
+	if get.Receiver != "Net::HTTP" || get.ReceiverKind != ReceiverConstant {
+		t.Errorf("Net::HTTP.get: receiver=%q kind=%q", get.Receiver, get.ReceiverKind)
+	}
+
+	system := callByName(t, a.Calls, "system")
+	if system.ReceiverKind != ReceiverBare || len(system.Arguments) != 2 {
+		t.Errorf("system call facts = %#v", system)
+	}
+
+	finish := callByName(t, a.Calls, "finish")
+	if finish.Receiver != "self" || finish.ReceiverKind != ReceiverSelf {
+		t.Errorf("self.finish: receiver=%q kind=%q", finish.Receiver, finish.ReceiverKind)
+	}
+
+	var expression Call
+	for _, c := range a.Calls {
+		if c.Name == "run" && c.Receiver == "factory()" {
+			expression = c
+		}
+	}
+	if expression.ReceiverKind != ReceiverExpression {
+		t.Errorf("factory().run call facts = %#v", expression)
+	}
+
+	subshell := callByName(t, a.Calls, "`")
+	if subshell.Dispatch != DispatchSubshell || subshell.Receiver != "Kernel" {
+		t.Errorf("subshell call facts = %#v", subshell)
+	}
+}
+
 func TestAnalyseParams(t *testing.T) {
 	a, ok := analyse([]byte(`package m
 func F(a, b int, c ...string) (err error) { return }

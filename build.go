@@ -129,7 +129,7 @@ func analyseOne(root, path string, opts Options) fileAnalysis {
 		fa.skipped = "unreadable"
 		return fa
 	}
-	if _, ok := detect(path); !ok {
+	if _, ok := detectSource(src, path); !ok {
 		fa.skipped = "unsupported"
 		return fa
 	}
@@ -160,7 +160,7 @@ func emitFileNodes(g *Graph, files []fileAnalysis) {
 				ID:        sid,
 				Kind:      d.Kind,
 				Name:      d.Name,
-				Qualified: qualified(f.a.Decls, i),
+				Qualified: qualified(f.a.Lang, f.a.Decls, i),
 				File:      f.path,
 				Line:      d.Line,
 				Start:     int(d.Start),
@@ -180,7 +180,10 @@ func emitFileNodes(g *Graph, files []fileAnalysis) {
 	}
 }
 
-func qualified(decls []decl, i int) string {
+func qualified(lang string, decls []decl, i int) string {
+	if lang == "ruby" {
+		return rubyQualified(decls, i)
+	}
 	parts := []string{decls[i].Name}
 	for p := decls[i].Parent; p >= 0; p = decls[p].Parent {
 		parts = append(parts, decls[p].Name)
@@ -189,6 +192,33 @@ func qualified(decls []decl, i int) string {
 		parts[l], parts[r] = parts[r], parts[l]
 	}
 	return strings.Join(parts, ".")
+}
+
+func rubyQualified(decls []decl, i int) string {
+	d := decls[i]
+	var owner []string
+	for p := d.Parent; p >= 0; p = decls[p].Parent {
+		if decls[p].Kind == KindClass || decls[p].Kind == KindType {
+			owner = append(owner, decls[p].Name)
+		}
+	}
+	for left, right := 0, len(owner)-1; left < right; left, right = left+1, right-1 {
+		owner[left], owner[right] = owner[right], owner[left]
+	}
+	if d.Kind == KindFunc {
+		if d.Singleton && d.Owner != "" && d.Owner != "self" {
+			return d.Owner + "." + d.Name
+		}
+		if len(owner) == 0 {
+			return d.Name
+		}
+		separator := "#"
+		if d.Singleton {
+			separator = "."
+		}
+		return strings.Join(owner, "::") + separator + d.Name
+	}
+	return strings.Join(append(owner, d.Name), "::")
 }
 
 func signature(src []byte, d decl) string {

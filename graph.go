@@ -10,7 +10,7 @@ import (
 
 // SchemaVersion is bumped whenever Node, Edge, or Graph change in a way a
 // reader must understand.
-const SchemaVersion = 1
+const SchemaVersion = 2
 
 // Node kinds.
 const (
@@ -28,6 +28,7 @@ const (
 const (
 	RelContains   = "contains"
 	RelImports    = "imports"
+	RelLoads      = "loads"
 	RelCalls      = "calls"
 	RelReferences = "references"
 	RelInherits   = "inherits"
@@ -58,12 +59,14 @@ type Node struct {
 
 // Edge is one directed relationship between two nodes.
 type Edge struct {
-	From string `json:"from"`
-	To   string `json:"to"`
-	Rel  string `json:"rel"`
-	Conf string `json:"conf"`
-	File string `json:"file,omitempty"`
-	Line int    `json:"line,omitempty"`
+	From      string `json:"from"`
+	To        string `json:"to"`
+	Rel       string `json:"rel"`
+	Conf      string `json:"conf"`
+	File      string `json:"file,omitempty"`
+	Line      int    `json:"line,omitempty"`
+	Operation string `json:"operation,omitempty"`
+	Call      *Call  `json:"call,omitempty"`
 }
 
 // Graph is a whole-repository code graph.
@@ -186,8 +189,8 @@ func (g *Graph) edgeSlice(idx []int) []Edge {
 	return out
 }
 
-// sortStable orders Nodes by ID and Edges by (From, To, Rel, File, Line) so
-// two builds of the same input produce byte-identical JSON.
+// sortStable orders Nodes and Edges so two builds of the same input produce
+// byte-identical JSON.
 func (g *Graph) sortStable() {
 	sort.Slice(g.Nodes, func(i, j int) bool { return g.Nodes[i].ID < g.Nodes[j].ID })
 	sort.Slice(g.Edges, func(i, j int) bool {
@@ -204,7 +207,16 @@ func (g *Graph) sortStable() {
 		if a.File != b.File {
 			return a.File < b.File
 		}
-		return a.Line < b.Line
+		if a.Line != b.Line {
+			return a.Line < b.Line
+		}
+		if a.Operation != b.Operation {
+			return a.Operation < b.Operation
+		}
+		if a.Call == nil || b.Call == nil {
+			return a.Call == nil && b.Call != nil
+		}
+		return a.Call.Start < b.Call.Start
 	})
 	g.built = false
 }

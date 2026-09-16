@@ -83,6 +83,20 @@ func TestCLIPythonAffected(t *testing.T) {
 	}
 }
 
+func TestCLIRubyAffected(t *testing.T) {
+	dir := testdata("cli-ruby")
+
+	out := run(t, "affected", "-dir", dir, "-inferred", "ext:ruby:File:read")
+	if !strings.Contains(out, "Worker#run") {
+		t.Errorf("affected output missing Ruby method:\n%s", out)
+	}
+
+	out = run(t, "affected", "-dir", dir, "-inferred", "ext:ruby:File:delete")
+	if !strings.Contains(out, "bin/tool") {
+		t.Errorf("affected output missing Ruby executable:\n%s", out)
+	}
+}
+
 func TestCLICallersInferred(t *testing.T) {
 	dir := testdata("cli-go")
 	out := run(t, "callers", "-dir", dir, "Load")
