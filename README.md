@@ -81,25 +81,30 @@ concurrency, and whether to compress.
 `Result` carries `[]File` and a rendered `Tree` string. `Result.Markdown(w)`
 and `Result.XML(w)` write the packed document.
 
-`Build(root string, opts Options) (*Graph, error)` walks `root` the same way as
-`Pack` and returns a directed code graph. Nodes are files, modules,
-declarations, and unresolved external call targets; each edge has a relation
-(`contains`, `imports`, `calls`) and a confidence (`extracted` for facts read
-directly from one AST, `inferred` for cross-file name resolution). `Graph`
-methods query the result: `Def(name)` looks up by node ID, bare name, or
-qualified name; `Callers`/`Callees` return one-hop call edges;
+`Build(root string, opts Options) (*Graph, error)` shares the `Pack` walker but
+keeps `bin/` entrypoints and returns a directed code graph. Ruby files include
+`.rb`, `.gemspec`, and extensionless files with a Ruby shebang. Nodes are
+files, modules, declarations, and unresolved external call targets; each edge
+has a relation (`contains`, `imports`, `loads`, `calls`) and a confidence
+(`extracted` for facts read directly from one AST, `inferred` for name
+resolution). Call edges retain the receiver form, dispatch form, arguments,
+and byte span. `Graph` methods query the result: `Def(name)` looks up by node
+ID, bare name, or qualified name; `Callers`/`Callees` return one-hop call edges;
 `Affected(seeds, opts)` returns reverse-reachable evidence paths from a set of
 sinks; `Path(from, to, opts)` returns the shortest forward call chain;
 `JSON(w)` writes sorted output so repeated builds of unchanged input are
-byte-identical. Call extraction and cross-file resolution currently cover Go
-and Python; for other supported languages the graph contains file, symbol,
+byte-identical. Go and Python include cross-file call resolution. Ruby includes
+direct calls, same-file calls within the same class or module, distinct instance
+and singleton method names, unresolved dynamic receivers, subshells, and local
+`require_relative` load edges. Other supported languages contain file, symbol,
 module, and import structure with call edges omitted.
 
 `Tree(paths []string) string` renders a box-drawing directory tree from a flat
 path list.
 
 `Supported(filename string) bool` reports whether a file's extension maps to a
-language with an outlining query.
+language with an outlining query. `SupportedSource(src, filename)` also checks
+source-based detection such as Ruby shebangs.
 
 `SetParseTimeout(d time.Duration)` overrides the per-file parse timeout
 (default 1s). Must be called before the first `Outline` or `Pack` call.

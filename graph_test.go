@@ -69,7 +69,14 @@ func TestGraphJSONDeterministic(t *testing.T) {
 			},
 			Edges: []Edge{
 				{From: "sym:b.go:0", To: "file:a.go", Rel: RelReferences},
-				{From: "file:a.go", To: "sym:b.go:0", Rel: RelContains},
+				{
+					From: "file:a.go", To: "sym:b.go:0", Rel: RelCalls,
+					Call: &Call{
+						Receiver: "File", ReceiverKind: ReceiverConstant,
+						Name: "read", Dispatch: DispatchDirect, Start: 10, End: 24,
+						Arguments: []Argument{{Kind: "string", Text: `"a"`, Start: 20, End: 23}},
+					},
+				},
 			},
 		}
 	}
@@ -92,5 +99,8 @@ func TestGraphJSONDeterministic(t *testing.T) {
 	}
 	if round.Edges[0].From != "file:a.go" {
 		t.Errorf("edges not sorted: first from = %q", round.Edges[0].From)
+	}
+	if round.Edges[0].Call == nil || round.Edges[0].Call.ReceiverKind != ReceiverConstant || len(round.Edges[0].Call.Arguments) != 1 {
+		t.Errorf("call facts did not round-trip: %#v", round.Edges[0].Call)
 	}
 }

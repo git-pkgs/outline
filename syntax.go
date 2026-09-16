@@ -28,14 +28,15 @@ type Name struct {
 
 // Import is one source import form. A statement containing more than one
 // form, such as a JavaScript default plus named import, produces one Import
-// value for each form. Names is empty for side-effect and wildcard imports,
-// and when a local binding cannot be established from the statement alone,
-// such as an unaliased Go import.
+// value for each form. Form and Relative retain language-specific loading
+// details when they affect graph construction.
 type Import struct {
-	Module string
-	Kind   ImportKind
-	Names  []Name
-	Line   int
+	Module   string
+	Kind     ImportKind
+	Names    []Name
+	Form     string
+	Relative bool
+	Line     int
 }
 
 // Ref is a direct member access on a caller-supplied receiver.

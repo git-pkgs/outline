@@ -171,10 +171,18 @@ import (
 		},
 		{
 			filename: "app.rb",
-			src:      "require \"octokit\"\nrequire 'octokit/client'\n",
+			src: `require "octokit"
+require 'octokit/client'
+require_relative "helper"
+Kernel.require "net/http"
+require "#{name}/client"
+require File.join("plugins", name)
+`,
 			want: []Import{
-				{Module: "octokit", Kind: ImportSideEffect, Line: 1},
-				{Module: "octokit/client", Kind: ImportSideEffect, Line: 2},
+				{Module: "octokit", Kind: ImportSideEffect, Form: "require", Line: 1},
+				{Module: "octokit/client", Kind: ImportSideEffect, Form: "require", Line: 2},
+				{Module: "helper", Kind: ImportSideEffect, Form: "require_relative", Relative: true, Line: 3},
+				{Module: "net/http", Kind: ImportSideEffect, Form: "require", Line: 4},
 			},
 		},
 		{

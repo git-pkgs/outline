@@ -10,16 +10,18 @@ import (
 // retains the full definition span and nesting so callers can compute node
 // identities and containment before the tree is released.
 type decl struct {
-	Name     string
-	Kind     string
-	Line     int
-	Exported bool
-	NameAt   uint32
-	Start    uint32
-	End      uint32
-	SigEnd   uint32
-	Parent   int
-	Params   []string
+	Name      string
+	Kind      string
+	Line      int
+	Exported  bool
+	NameAt    uint32
+	Start     uint32
+	End       uint32
+	SigEnd    uint32
+	Parent    int
+	Params    []string
+	Singleton bool
+	Owner     string
 }
 
 func (d decl) symID(path string) string {
@@ -110,6 +112,13 @@ func declsFromMatch(src []byte, l *lang, m ts.QueryMatch) []decl {
 		sigEnd = body.StartByte()
 	}
 	params := extractParams(src, l, definition)
+	singleton := l.name == "ruby" && definition.Type(l.language) == "singleton_method"
+	owner := ""
+	if singleton {
+		if object := definition.ChildByFieldName("object", l.language); object != nil {
+			owner = object.Text(src)
+		}
+	}
 	out := make([]decl, 0, len(names))
 	for _, n := range names {
 		if n == nil {
@@ -120,16 +129,18 @@ func declsFromMatch(src []byte, l *lang, m ts.QueryMatch) []decl {
 			continue
 		}
 		out = append(out, decl{
-			Name:     name,
-			Kind:     normalizeSymbolKind(l.name, kind, name, definition, src, l.language),
-			Line:     int(n.StartPoint().Row) + 1,
-			Exported: exported || symbolExported(l.name, name, definition, src, l.language),
-			NameAt:   n.StartByte(),
-			Start:    start,
-			End:      end,
-			SigEnd:   sigEnd,
-			Parent:   -1,
-			Params:   params,
+			Name:      name,
+			Kind:      normalizeSymbolKind(l.name, kind, name, definition, src, l.language),
+			Line:      int(n.StartPoint().Row) + 1,
+			Exported:  exported || symbolExported(l.name, name, definition, src, l.language),
+			NameAt:    n.StartByte(),
+			Start:     start,
+			End:       end,
+			SigEnd:    sigEnd,
+			Parent:    -1,
+			Params:    params,
+			Singleton: singleton,
+			Owner:     owner,
 		})
 	}
 	return out
@@ -172,6 +183,8 @@ func extractParams(src []byte, l *lang, def *ts.Node) []string {
 		collect(def.ChildByFieldName("parameters", l.language))
 		collect(def.ChildByFieldName("result", l.language))
 	case "python":
+		collect(def.ChildByFieldName("parameters", l.language))
+	case "ruby":
 		collect(def.ChildByFieldName("parameters", l.language))
 	}
 	return out
