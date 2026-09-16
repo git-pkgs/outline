@@ -83,6 +83,21 @@ func TestCLIPythonAffected(t *testing.T) {
 	}
 }
 
+func TestCLICallersInferred(t *testing.T) {
+	dir := testdata("cli-go")
+	out := run(t, "callers", "-dir", dir, "Load")
+	if strings.Contains(out, "Handler") || strings.Contains(out, "[inferred]") {
+		t.Errorf("callers without -inferred should not show cross-package caller:\n%s", out)
+	}
+	if strings.Contains(out, "--contains") || strings.Contains(out, "--imports") {
+		t.Errorf("callers output should not include non-call edges:\n%s", out)
+	}
+	out = run(t, "callers", "-dir", dir, "-inferred", "Load")
+	if !strings.Contains(out, "Handler") {
+		t.Errorf("callers -inferred should show cross-package caller:\n%s", out)
+	}
+}
+
 func TestCLIUsage(t *testing.T) {
 	cmd := exec.Command(binPath)
 	out, err := cmd.CombinedOutput()

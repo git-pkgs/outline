@@ -22,7 +22,8 @@ type TraverseOptions struct {
 // Path is an ordered chain of edges from a seed to a reached node.
 type Path []Edge
 
-func (o TraverseOptions) allow(e Edge) bool {
+// Allow reports whether e passes the relation and confidence filter.
+func (o TraverseOptions) Allow(e Edge) bool {
 	if !o.IncludeInferred && e.Conf != ConfExtracted {
 		return false
 	}
@@ -91,7 +92,7 @@ func (g *Graph) Affected(seeds []string, opts TraverseOptions) []Path {
 		}
 		for _, ei := range g.rev[id] {
 			e := g.Edges[ei]
-			if !opts.allow(e) {
+			if !opts.Allow(e) {
 				continue
 			}
 			if _, seen := prev[e.From]; seen {
@@ -148,7 +149,7 @@ func (g *Graph) Path(from, to string, opts TraverseOptions) Path {
 		}
 		for _, ei := range g.fwd[id] {
 			e := g.Edges[ei]
-			if !opts.allow(e) {
+			if !opts.Allow(e) {
 				continue
 			}
 			if _, seen := prev[e.To]; seen {
@@ -188,30 +189,54 @@ func (t *textWriter) line(s string) {
 func (t *textWriter) done() bool { return t.err != nil || t.trunc }
 
 func (g *Graph) display(id string) string {
-	if n := g.Node(id); n != nil && n.Qualified != "" {
-		return n.Qualified
+	if n := g.Node(id); n != nil {
+		return nodeLabel(n)
 	}
 	return id
 }
 
-func nodeLine(n *Node) string {
-	loc := n.File
-	if n.Line > 0 {
-		loc = fmt.Sprintf("%s:%d", n.File, n.Line)
+func nodeLabel(n *Node) string {
+	if n.Qualified != "" {
+		return n.Qualified
 	}
-	return fmt.Sprintf("NODE %s %s %s exported=%t sig=%s",
-		sanitise(n.Qualified), n.Kind, loc, n.Exported, sanitise(n.Sig))
+	if n.Name != "" {
+		return n.Name
+	}
+	return n.ID
+}
+
+func location(file string, line int) string {
+	if file == "" {
+		return ""
+	}
+	if line > 0 {
+		return fmt.Sprintf("%s:%d", sanitise(file), line)
+	}
+	return sanitise(file)
+}
+
+func nodeLine(n *Node) string {
+	s := fmt.Sprintf("NODE %s %s", sanitise(nodeLabel(n)), sanitise(n.Kind))
+	if loc := location(n.File, n.Line); loc != "" {
+		s += " " + loc
+	}
+	return fmt.Sprintf("%s exported=%t sig=%s", s, n.Exported, sanitise(n.Sig))
 }
 
 func (g *Graph) edgeLine(e Edge) string {
-	return fmt.Sprintf("EDGE %s --%s[%s]--> %s at %s:%d",
-		sanitise(g.display(e.From)), e.Rel, e.Conf, sanitise(g.display(e.To)), e.File, e.Line)
+	s := fmt.Sprintf("EDGE %s --%s[%s]--> %s",
+		sanitise(g.display(e.From)), sanitise(e.Rel), sanitise(e.Conf), sanitise(g.display(e.To)))
+	if loc := location(e.File, e.Line); loc != "" {
+		s += " at " + loc
+	}
+	return s
 }
 
 // Text writes a budgeted line-oriented rendering of the seeds and their
-// BFS neighbourhood. Every line is sanitised so untrusted source cannot
-// inject terminal escapes or break the line protocol.
-func (g *Graph) Text(w io.Writer, ids []string, budget int) error {
+// BFS neighbourhood, following only edges that pass allow (nil admits
+// every edge). Every line is sanitised so untrusted source cannot inject
+// terminal escapes or break the line protocol.
+func (g *Graph) Text(w io.Writer, ids []string, budget int, allow func(Edge) bool) error {
 	g.index()
 	tw := &textWriter{w: w, limit: budget * bytesPerToken}
 	seen := make(map[string]bool)
@@ -230,12 +255,12 @@ func (g *Graph) Text(w io.Writer, ids []string, budget int) error {
 	for len(frontier) > 0 && !tw.done() {
 		id := frontier[0]
 		frontier = frontier[1:]
-		frontier = g.textEdges(tw, id, seen, edgeSeen, frontier)
+		frontier = g.textEdges(tw, id, allow, seen, edgeSeen, frontier)
 	}
 	return tw.err
 }
 
-func (g *Graph) textEdges(tw *textWriter, id string, seen map[string]bool, edgeSeen map[int]bool, frontier []string) []string {
+func (g *Graph) textEdges(tw *textWriter, id string, allow func(Edge) bool, seen map[string]bool, edgeSeen map[int]bool, frontier []string) []string {
 	for _, adj := range [][]int{g.fwd[id], g.rev[id]} {
 		for _, ei := range adj {
 			if edgeSeen[ei] || tw.done() {
@@ -243,6 +268,9 @@ func (g *Graph) textEdges(tw *textWriter, id string, seen map[string]bool, edgeS
 			}
 			edgeSeen[ei] = true
 			e := g.Edges[ei]
+			if allow != nil && !allow(e) {
+				continue
+			}
 			tw.line(g.edgeLine(e))
 			for _, next := range []string{e.From, e.To} {
 				if seen[next] {

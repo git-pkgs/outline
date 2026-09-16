@@ -5,6 +5,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 )
 
@@ -30,10 +31,13 @@ type resolver struct {
 
 // scope is a file's local name table.
 type scope struct {
-	// syms maps a bare name to a repository sym ID.
+	// syms maps a bare top-level name to a repository sym or ext ID.
 	syms map[string]string
 	// mods maps a local module alias to its mod ID.
 	mods map[string]string
+	// children maps a decl index (or -1 for top level) to its direct
+	// child decl indices, for lexical resolution of nested calls.
+	children map[int][]int
 }
 
 func newResolver(root string, files []fileAnalysis, hints ResolutionHints) *resolver {
@@ -156,6 +160,9 @@ func (r *resolver) goModuleFiles(module string) []string {
 	if !ok {
 		return nil
 	}
+	if rel != "" && rel[0] != '/' {
+		return nil
+	}
 	dir := strings.TrimPrefix(rel, "/")
 	var files []string
 	for p, f := range r.files {
@@ -234,11 +241,16 @@ func (r *resolver) moduleExports(mid string) map[string]string {
 
 // fileScope builds the local name table for one analysed file.
 func (r *resolver) fileScope(f *fileAnalysis) scope {
-	sc := scope{syms: make(map[string]string), mods: make(map[string]string)}
+	sc := scope{
+		syms:     make(map[string]string),
+		mods:     make(map[string]string),
+		children: make(map[int][]int),
+	}
 	if f.a.Lang == "go" {
 		maps.Copy(sc.syms, r.goPkgs[path.Dir(f.path)])
 	}
-	for _, d := range f.a.Decls {
+	for i, d := range f.a.Decls {
+		sc.children[d.Parent] = append(sc.children[d.Parent], i)
 		if d.Parent == -1 {
 			sc.syms[d.Name] = d.symID(f.path)
 		}
@@ -267,7 +279,7 @@ func (r *resolver) fileScope(f *fileAnalysis) scope {
 				if sid, ok := exp[n.Name]; ok {
 					sc.syms[local] = sid
 				} else {
-					sc.syms[local] = ExtID(f.a.Lang, imp.Module, n.Name)
+					sc.syms[local] = ExtID(f.a.Lang, modName(mid), n.Name)
 				}
 			}
 		case ImportWildcard:
@@ -280,10 +292,14 @@ func (r *resolver) fileScope(f *fileAnalysis) scope {
 func defaultAlias(lang, module string) string {
 	switch lang {
 	case "go":
-		if i := strings.LastIndexByte(module, '/'); i >= 0 {
-			return module[i+1:]
+		seg := module
+		if i := strings.LastIndexByte(seg, '/'); i >= 0 && goVersionSuffix(seg[i+1:]) {
+			seg = seg[:i]
 		}
-		return module
+		if i := strings.LastIndexByte(seg, '/'); i >= 0 {
+			return seg[i+1:]
+		}
+		return seg
 	case "python":
 		if i := strings.IndexByte(module, '.'); i > 0 {
 			return module[:i]
@@ -326,13 +342,18 @@ func (r *resolver) emitCalls(g *Graph) {
 
 func (r *resolver) resolveCall(f *fileAnalysis, sc scope, c Call) (string, string) {
 	if c.Receiver == "" {
+		if sid, shadowed := lexical(f, sc, c.In, c.Name); sid != "" {
+			return sid, ConfExtracted
+		} else if shadowed {
+			return ExtID(f.a.Lang, "", c.Name), ConfInferred
+		}
 		if sid, ok := sc.syms[c.Name]; ok {
-			if strings.HasPrefix(sid, "sym:"+idEscape(f.path)+":") {
-				return sid, ConfExtracted
-			}
 			return sid, ConfInferred
 		}
 		return ExtID(f.a.Lang, "", c.Name), ConfInferred
+	}
+	if _, shadowed := lexical(f, sc, c.In, c.Receiver); shadowed {
+		return ExtID(f.a.Lang, c.Receiver, c.Name), ConfInferred
 	}
 	if mid, ok := sc.mods[c.Receiver]; ok {
 		if sid, ok := r.moduleExports(mid)[c.Name]; ok {
@@ -341,6 +362,43 @@ func (r *resolver) resolveCall(f *fileAnalysis, sc scope, c Call) (string, strin
 		return ExtID(f.a.Lang, modName(mid), c.Name), ConfInferred
 	}
 	return ExtID(f.a.Lang, c.Receiver, c.Name), ConfInferred
+}
+
+// lexical walks outward from the enclosing declaration, returning the
+// innermost visible decl matching name. If a parameter of an enclosing
+// function matches first, it reports shadowed instead. Class bodies do
+// not contribute their members to enclosed functions' scopes.
+func lexical(f *fileAnalysis, sc scope, in int, name string) (id string, shadowed bool) {
+	decls := f.a.Decls
+	at := in
+	for {
+		if at < 0 || at == in || decls[at].Kind != KindClass {
+			for _, ci := range sc.children[at] {
+				if decls[ci].Name == name {
+					return decls[ci].symID(f.path), false
+				}
+			}
+		}
+		if at < 0 {
+			return "", false
+		}
+		if slices.Contains(decls[at].Params, name) {
+			return "", true
+		}
+		at = decls[at].Parent
+	}
+}
+
+func goVersionSuffix(s string) bool {
+	if len(s) < 2 || s[0] != 'v' {
+		return false
+	}
+	for i := 1; i < len(s); i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	return s != "v0" && s != "v1"
 }
 
 // extQualified derives a stable display name from an ext: node ID so the

@@ -1,6 +1,9 @@
 package outline
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
 func declByName(t *testing.T, decls []decl, name string) (int, decl) {
 	t.Helper()
@@ -126,6 +129,57 @@ func main() {
 	check := callByName(t, a.Calls, "check")
 	if check.Receiver != "" || check.In != iMain {
 		t.Errorf("check: receiver=%q in=%d, want \"\"/%d", check.Receiver, check.In, iMain)
+	}
+}
+
+func TestAnalyseParams(t *testing.T) {
+	a, ok := analyse([]byte(`package m
+func F(a, b int, c ...string) (err error) { return }
+`), "m.go")
+	if !ok {
+		t.Fatal("analyse failed")
+	}
+	_, d := declByName(t, a.Decls, "F")
+	for _, p := range []string{"a", "b", "c", "err"} {
+		if !slices.Contains(d.Params, p) {
+			t.Errorf("Go params missing %q: %v", p, d.Params)
+		}
+	}
+
+	a, ok = analyse([]byte("def f(x, y=1, *args, z: int, **kw): pass\n"), "m.py")
+	if !ok {
+		t.Fatal("analyse failed")
+	}
+	_, d = declByName(t, a.Decls, "f")
+	for _, p := range []string{"x", "y", "args", "z", "kw"} {
+		if !slices.Contains(d.Params, p) {
+			t.Errorf("Python params missing %q: %v", p, d.Params)
+		}
+	}
+}
+
+func TestAnalyseExplicitExports(t *testing.T) {
+	a, ok := analyse([]byte("function f() {}\nfunction g() {}\nexport { f };\n"), "m.js")
+	if !ok {
+		t.Fatal("analyse failed")
+	}
+	_, df := declByName(t, a.Decls, "f")
+	_, dg := declByName(t, a.Decls, "g")
+	if !df.Exported {
+		t.Errorf("f should be exported via export list")
+	}
+	if dg.Exported {
+		t.Errorf("g should not be exported")
+	}
+
+	a, ok = analyse([]byte("proc p*() = discard\nproc q() = discard\n"), "m.nim")
+	if !ok {
+		t.Fatal("analyse failed")
+	}
+	_, dp := declByName(t, a.Decls, "p")
+	_, dq := declByName(t, a.Decls, "q")
+	if !dp.Exported || dq.Exported {
+		t.Errorf("Nim export marker: p=%v q=%v", dp.Exported, dq.Exported)
 	}
 }
 

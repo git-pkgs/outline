@@ -101,7 +101,7 @@ func TestPath(t *testing.T) {
 func TestText(t *testing.T) {
 	g := chain()
 	var buf bytes.Buffer
-	if err := g.Text(&buf, []string{"sym:x.go:b"}, 0); err != nil {
+	if err := g.Text(&buf, []string{"sym:x.go:b"}, 0, nil); err != nil {
 		t.Fatal(err)
 	}
 	out := buf.String()
@@ -116,11 +116,63 @@ func TestText(t *testing.T) {
 	}
 
 	buf.Reset()
-	if err := g.Text(&buf, []string{"sym:x.go:a"}, 10); err != nil {
+	if err := g.Text(&buf, []string{"sym:x.go:a"}, 10, nil); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(buf.String(), "truncated") {
 		t.Errorf("small budget should truncate: %q", buf.String())
+	}
+
+	buf.Reset()
+	allow := TraverseOptions{}.Allow
+	if err := g.Text(&buf, []string{"sym:x.go:b"}, 0, allow); err != nil {
+		t.Fatal(err)
+	}
+	out = buf.String()
+	if strings.Contains(out, "[inferred]") {
+		t.Errorf("filtered Text should not print inferred edges: %q", out)
+	}
+	if !strings.Contains(out, "EDGE a --calls[extracted]--> b") {
+		t.Errorf("filtered Text should still print extracted edges: %q", out)
+	}
+}
+
+func TestTextRendering(t *testing.T) {
+	g := &Graph{
+		Nodes: []Node{
+			{ID: "file:x.go", Kind: KindFile, Name: "x.go", File: "x.go"},
+			{ID: "mod:go:m", Kind: KindModule, Name: "m"},
+		},
+		Edges: []Edge{
+			{From: "mod:go:m", To: "file:x.go", Rel: RelContains, Conf: ConfInferred},
+		},
+	}
+	var buf bytes.Buffer
+	if err := g.Text(&buf, []string{"file:x.go"}, 0, nil); err != nil {
+		t.Fatal(err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "NODE x.go file x.go") {
+		t.Errorf("file node should fall back to Name label: %q", out)
+	}
+	if !strings.Contains(out, "NODE m module exported=") {
+		t.Errorf("module node should omit empty location: %q", out)
+	}
+	if strings.Contains(out, "at :0") || strings.Contains(out, " at \n") {
+		t.Errorf("edge without location should omit at-clause: %q", out)
+	}
+	if strings.Contains(out, "NODE  ") {
+		t.Errorf("blank node label: %q", out)
+	}
+
+	evil := &Node{ID: "x", Kind: "func\ninjected", Name: "n", File: "a\x1b[31m.go", Line: 1}
+	line := nodeLine(evil)
+	if strings.Contains(line, "\n") || strings.Contains(line, "\x1b") {
+		t.Errorf("nodeLine leaked control bytes: %q", line)
+	}
+	e := Edge{From: "a", To: "b", Rel: "calls\n", Conf: "x\x1b", File: "f\n.go", Line: 2}
+	if el := g.edgeLine(e); strings.Contains(el, "\n") || strings.Contains(el, "\x1b") {
+		t.Errorf("edgeLine leaked control bytes: %q", el)
 	}
 }
 

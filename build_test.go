@@ -293,6 +293,149 @@ func TestBuildExtQualifiedCanonical(t *testing.T) {
 	}
 }
 
+func TestBuildGoModuleBoundary(t *testing.T) {
+	root := t.TempDir()
+	writeFiles(t, root, map[string]string{
+		"go.mod":         "module example.com/svc\n",
+		"main.go":        "package main\nimport \"example.com/svc2/util\"\nfunc main() { util.Run() }\n",
+		"2/util/util.go": "package util\nfunc Run() {}\n",
+	})
+	g, err := Build(root, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mid := ModID("go", "example.com/svc2/util")
+	if e := edge(g, mid, FileID("2/util/util.go"), RelContains); e != nil {
+		t.Errorf("svc2 import wrongly resolved into svc module: %v", e)
+	}
+}
+
+func TestBuildGoVersionedAlias(t *testing.T) {
+	root := t.TempDir()
+	writeFiles(t, root, map[string]string{
+		"go.mod":  "module m\n",
+		"main.go": "package main\nimport \"github.com/foo/bar/v3\"\nfunc main() { bar.Do() }\n",
+	})
+	g, err := Build(root, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := ExtID("go", "github.com/foo/bar/v3", "Do")
+	if g.Node(want) == nil {
+		t.Fatalf("bar.Do() did not resolve via versioned alias; want %s, ext nodes: %v", want, g.Def("Do"))
+	}
+	if defaultAlias("go", "gopkg.in/vault") != "vault" {
+		t.Errorf("non-numeric v-prefix segment stripped: %q", defaultAlias("go", "gopkg.in/vault"))
+	}
+}
+
+func TestBuildPythonRelativeExtDistinct(t *testing.T) {
+	root := t.TempDir()
+	writeFiles(t, root, map[string]string{
+		"a/__init__.py": "",
+		"a/app.py":      "from .missing import run\ndef fa(): run()\n",
+		"b/__init__.py": "",
+		"b/app.py":      "from .missing import run\ndef fb(): run()\n",
+	})
+	g, err := Build(root, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fa := nodeByName(g, KindFunc, "fa")
+	fb := nodeByName(g, KindFunc, "fb")
+	target := func(from string) string {
+		for _, e := range g.Out(from) {
+			if e.Rel == RelCalls {
+				return e.To
+			}
+		}
+		return ""
+	}
+	ta, tb := target(fa.ID), target(fb.ID)
+	if ta == tb {
+		t.Errorf("unresolved relative imports collided: fa->%q fb->%q", ta, tb)
+	}
+	if !strings.HasPrefix(ta, "ext:") || !strings.HasPrefix(tb, "ext:") {
+		t.Errorf("expected ext: targets, got %q %q", ta, tb)
+	}
+}
+
+func TestBuildLexicalScope(t *testing.T) {
+	root := t.TempDir()
+	writeFiles(t, root, map[string]string{
+		"n.py": `def outer():
+    def inner():
+        pass
+    inner()
+
+def helper():
+    pass
+
+class C:
+    def m(self):
+        m()
+        helper()
+
+def caller(helper):
+    helper()
+`,
+	})
+	g, err := Build(root, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	outer := nodeByName(g, KindFunc, "outer")
+	inner := nodeByName(g, KindFunc, "inner")
+	helperFn := nodeByName(g, KindFunc, "helper")
+	m := nodeByName(g, KindFunc, "m")
+	caller := nodeByName(g, KindFunc, "caller")
+
+	if e := edge(g, outer.ID, inner.ID, RelCalls); e == nil || e.Conf != ConfExtracted {
+		t.Errorf("nested inner() should resolve extracted: %v", e)
+	}
+	if e := edge(g, m.ID, m.ID, RelCalls); e != nil {
+		t.Errorf("m() inside method should not resolve to the method: %v", e)
+	}
+	if e := edge(g, m.ID, helperFn.ID, RelCalls); e == nil || e.Conf != ConfExtracted {
+		t.Errorf("helper() from method should resolve to top-level extracted: %v", e)
+	}
+	if e := edge(g, caller.ID, helperFn.ID, RelCalls); e != nil {
+		t.Errorf("helper() shadowed by param should not resolve to top-level: %v", e)
+	}
+	extHelper := ExtID("python", "", "helper")
+	if e := edge(g, caller.ID, extHelper, RelCalls); e == nil {
+		t.Errorf("shadowed helper() should produce ext edge; edges from caller: %v", g.Out(caller.ID))
+	}
+}
+
+func TestBuildGoParamShadow(t *testing.T) {
+	root := t.TempDir()
+	writeFiles(t, root, map[string]string{
+		"go.mod": "module example.com/app\n",
+		"main.go": `package main
+import "example.com/app/util"
+func Handler() {}
+func A(Handler func()) { Handler() }
+func B(util T) { util.Run() }
+`,
+		"util/util.go": "package util\nfunc Run() {}\n",
+	})
+	g, err := Build(root, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := nodeByName(g, KindFunc, "A")
+	handler := nodeByName(g, KindFunc, "Handler")
+	if e := edge(g, a.ID, handler.ID, RelCalls); e != nil {
+		t.Errorf("Handler() shadowed by param should not resolve to top-level: %v", e)
+	}
+	b := nodeByName(g, KindFunc, "B")
+	runFn := nodeByName(g, KindFunc, "Run")
+	if e := edge(g, b.ID, runFn.ID, RelCalls); e != nil {
+		t.Errorf("util.Run() with util param should not resolve via import: %v", e)
+	}
+}
+
 func TestBuildDeterministic(t *testing.T) {
 	root := t.TempDir()
 	writeFiles(t, root, map[string]string{

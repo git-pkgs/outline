@@ -78,18 +78,25 @@ func symbolsFromMatch(src []byte, l *lang, match ts.QueryMatch) []parsedSymbol {
 	return parsed
 }
 
-func applyExplicitExports(parsed []parsedSymbol, l *lang, root *ts.Node, src []byte) {
-	var exported map[string]bool
-	merge := false
+// explicitExports returns the set of names a file's export list marks as
+// public, for languages that declare exports separately from definitions.
+// merge is true when the list augments per-definition markers rather than
+// replacing them.
+func explicitExports(l *lang, root *ts.Node, src []byte) (names map[string]bool, merge, ok bool) {
 	switch l.name {
 	case "javascript", "typescript":
-		exported = javascriptExports(root, src, l.language)
-		merge = true
+		return javascriptExports(root, src, l.language), true, true
 	case "erlang":
-		exported = exportsFromNodes(root, src, l.language, "export_attribute", "export_type_attribute", "atom")
+		return exportsFromNodes(root, src, l.language, "export_attribute", "export_type_attribute", "atom"), false, true
 	case "julia":
-		exported = exportsFromNodes(root, src, l.language, "export_statement", "public_statement", "identifier")
-	default:
+		return exportsFromNodes(root, src, l.language, "export_statement", "public_statement", "identifier"), false, true
+	}
+	return nil, false, false
+}
+
+func applyExplicitExports(parsed []parsedSymbol, l *lang, root *ts.Node, src []byte) {
+	exported, merge, ok := explicitExports(l, root, src)
+	if !ok {
 		return
 	}
 	for i := range parsed {

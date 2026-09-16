@@ -162,7 +162,7 @@ func cmdDef(args []string) error {
 	for i := range nodes {
 		ids[i] = nodes[i].ID
 	}
-	return g.Text(os.Stdout, ids, c.budget)
+	return g.Text(os.Stdout, ids, c.budget, nil)
 }
 
 func cmdNeighbours(args []string, callers bool) error {
@@ -189,15 +189,19 @@ func cmdNeighbours(args []string, callers bool) error {
 	} else {
 		edges = g.Callees(seed)
 	}
+	opts := c.traverse()
 	ids := []string{seed}
 	for _, e := range edges {
+		if !opts.Allow(e) {
+			continue
+		}
 		if callers {
 			ids = append(ids, e.From)
 		} else {
 			ids = append(ids, e.To)
 		}
 	}
-	return g.Text(os.Stdout, ids, c.budget)
+	return g.Text(os.Stdout, ids, c.budget, opts.Allow)
 }
 
 func cmdAffected(args []string) error {
@@ -222,8 +226,8 @@ func cmdAffected(args []string) error {
 		}
 		seeds = append(seeds, id)
 	}
-	paths := g.Affected(seeds, c.traverse())
-	return writePaths(g, paths, c.budget)
+	opts := c.traverse()
+	return writePaths(g, g.Affected(seeds, opts), c.budget, opts.Allow)
 }
 
 func cmdPath(args []string) error {
@@ -248,11 +252,12 @@ func cmdPath(args []string) error {
 	if err != nil {
 		return err
 	}
-	p := g.Path(from, to, c.traverse())
+	opts := c.traverse()
+	p := g.Path(from, to, opts)
 	if p == nil {
 		return fmt.Errorf("no path from %s to %s", from, to)
 	}
-	return writePaths(g, []outline.Path{p}, c.budget)
+	return writePaths(g, []outline.Path{p}, c.budget, opts.Allow)
 }
 
 // resolveOne turns a user-supplied seed into exactly one node ID, returning
@@ -273,7 +278,7 @@ func resolveOne(g *outline.Graph, name string) (string, error) {
 	return "", fmt.Errorf("%s", b.String())
 }
 
-func writePaths(g *outline.Graph, paths []outline.Path, budget int) error {
+func writePaths(g *outline.Graph, paths []outline.Path, budget int, allow func(outline.Edge) bool) error {
 	seen := make(map[string]bool)
 	var ids []string
 	for _, p := range paths {
@@ -289,5 +294,5 @@ func writePaths(g *outline.Graph, paths []outline.Path, budget int) error {
 		}
 	}
 	fmt.Printf("%d paths, %d nodes\n", len(paths), len(ids))
-	return g.Text(os.Stdout, ids, budget)
+	return g.Text(os.Stdout, ids, budget, allow)
 }

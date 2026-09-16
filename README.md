@@ -129,13 +129,14 @@ produces:
 $ outline affected -inferred -dir testdata/cli-go ext:go:os/exec:Command
 2 paths, 3 nodes
 NODE Handler func main.go:9 exported=true sig=func Handler(name string) error
-NODE exec.Command external  exported=false sig=
+NODE os/exec.Command external exported=false sig=
 NODE main func main.go:17 exported=false sig=func main()
-EDGE Handler --calls[inferred]--> exec.Command at main.go:14
+EDGE Handler --calls[inferred]--> Run at main.go:14
+NODE Run external exported=false sig=
+EDGE Handler --calls[inferred]--> os/exec.Command at main.go:14
 EDGE Handler --calls[inferred]--> Load at main.go:10
 NODE Load func store/store.go:7 exported=true sig=func Load(name string) (Record, error)
 EDGE main --calls[extracted]--> Handler at main.go:18
-...
 ```
 
 ## Languages
