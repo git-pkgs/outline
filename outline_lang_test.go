@@ -31,6 +31,18 @@ func (tc langCase) run(t *testing.T) {
 	}
 }
 
+func TestRubySourceDetection(t *testing.T) {
+	if !Supported("package.gemspec") {
+		t.Error("gemspec should be detected as Ruby")
+	}
+	if !SupportedSource([]byte("#!/usr/bin/env ruby\nputs 'ok'\n"), "bin/tool") {
+		t.Error("Ruby shebang should detect an extensionless executable")
+	}
+	if SupportedSource([]byte("#!/bin/sh\necho ok\n"), "bin/tool") {
+		t.Error("non-Ruby extensionless executable detected as Ruby")
+	}
+}
+
 func TestOutlinePython(t *testing.T) {
 	langCase{
 		filename: "sample.py",

@@ -48,24 +48,57 @@ func goImports(src []byte, language *ts.Language, root *ts.Node) []Import {
 func rubyImports(src []byte, language *ts.Language, root *ts.Node) []Import {
 	var imports []Import
 	walkNamed(root, func(node *ts.Node) {
-		if node.Type(language) != "call" || node.NamedChildCount() < 2 {
-			return
-		}
-		function := node.NamedChild(0)
-		if function.Type(language) != "identifier" || function.Text(src) != "require" {
-			return
-		}
-		arguments := node.NamedChild(1)
-		moduleNode := firstDescendantType(arguments, language, "string")
-		if moduleNode == nil {
-			return
-		}
-		module := sourceString(moduleNode.Text(src))
-		if module != "" {
-			imports = append(imports, Import{Module: module, Kind: ImportSideEffect, Line: sourceLine(node)})
+		if imported, ok := rubyImport(src, language, node); ok {
+			imports = append(imports, imported)
 		}
 	})
 	return imports
+}
+
+func rubyImport(src []byte, language *ts.Language, node *ts.Node) (Import, bool) {
+	if node.Type(language) != "call" {
+		return Import{}, false
+	}
+	method := node.ChildByFieldName("method", language)
+	if method == nil || !rubyLoadMethod(method.Text(src)) {
+		return Import{}, false
+	}
+	receiver := node.ChildByFieldName("receiver", language)
+	if receiver != nil && (receiver.Type(language) != "constant" || receiver.Text(src) != "Kernel") {
+		return Import{}, false
+	}
+	arguments := node.ChildByFieldName("arguments", language)
+	if arguments == nil {
+		return Import{}, false
+	}
+	index := 0
+	form := method.Text(src)
+	if form == "autoload" {
+		index = 1
+	}
+	if index >= int(arguments.NamedChildCount()) {
+		return Import{}, false
+	}
+	module, ok := rubyStringLiteral(src, language, arguments.NamedChild(index))
+	if !ok || module == "" {
+		return Import{}, false
+	}
+	return Import{
+		Module: module, Kind: ImportSideEffect, Form: form,
+		Relative: form == "require_relative", Line: sourceLine(node),
+	}, true
+}
+
+func rubyStringLiteral(src []byte, language *ts.Language, node *ts.Node) (string, bool) {
+	if node == nil || node.Type(language) != "string" {
+		return "", false
+	}
+	for i := range node.NamedChildCount() {
+		if node.NamedChild(i).Type(language) != "string_content" {
+			return "", false
+		}
+	}
+	return sourceString(node.Text(src)), true
 }
 
 func rustImports(src []byte, language *ts.Language, root *ts.Node) []Import {

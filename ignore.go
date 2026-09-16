@@ -1,8 +1,6 @@
 package outline
 
-// defaultIgnore is added on top of the project's .gitignore. It covers
-// vendored dependencies, build output, lockfiles and editor cruft that a
-// repository might reasonably commit but that add noise to a packed outline.
+// defaultIgnore is shared by Pack and Build.
 var defaultIgnore = []byte(`
 .git/
 .hg/
@@ -32,7 +30,6 @@ __pycache__/
 dist/
 build/
 out/
-bin/
 obj/
 coverage/
 .nyc_output/
@@ -78,3 +75,7 @@ Thumbs.db
 .vscode/
 *.iml
 `)
+
+// packIgnore removes executable entrypoints from packed context. Build keeps
+// them so source graphs include repository commands.
+var packIgnore = []byte("bin/\n")
