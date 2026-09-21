@@ -1,5 +1,5 @@
-github.com/git-pkgs/gitignore v1.2.0 h1:7vdR8/SvF31dvXqIdC1bKgCvyySefXuN8aY3xJLuFaM=
-github.com/git-pkgs/gitignore v1.2.0/go.mod h1:Lr0XwhbvP071rZF/zIIhkY1gEhFDoWHH91lngwLpeUg=
+github.com/git-pkgs/gitignore v1.3.0 h1:/lcTRp3QYzZDG1CyCLBZO2gxMb6oQWC5EnttSQg4zmU=
+github.com/git-pkgs/gitignore v1.3.0/go.mod h1:zleLGZ4PhQrUXrJSsVQWKoeEllEjJH49+DjyKpzIFPM=
 github.com/git-pkgs/magic v0.3.1 h1:UzjFRyEwJITA/JgznjmIM4VwuBszD2K4Q8XHgkgL+DM=
 github.com/git-pkgs/magic v0.3.1/go.mod h1:SXOqcsNmbmpZjJZHEEWnwxprbsFvpwWgTAZrgXp4Jm4=
 github.com/odvcencio/gotreesitter v0.52.0 h1:/CpWH3r0A7BbsM0jiKVn3s0/ZrzoOYZvXC0Kd/4Meww=

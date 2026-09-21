@@ -9,4 +9,4 @@ require (
 	github.com/odvcencio/gotreesitter v0.52.0
 )
 
-require github.com/git-pkgs/gitignore v1.2.0
+require github.com/git-pkgs/gitignore v1.3.0
