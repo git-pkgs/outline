@@ -25,8 +25,6 @@ type resolver struct {
 	modules map[string][]string
 	// exports maps a mod: ID to that module's top-level name → sym ID.
 	exports map[string]map[string]string
-
-	warnings []string
 }
 
 // scope is a file's local name table.
@@ -165,7 +163,8 @@ func (r *resolver) goModuleFiles(module string) []string {
 	}
 	dir := strings.TrimPrefix(rel, "/")
 	var files []string
-	for p, f := range r.files {
+	for _, p := range r.paths {
+		f := r.files[p]
 		if f.a == nil || f.a.Lang != "go" {
 			continue
 		}

@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 func writeFiles(t *testing.T, root string, files map[string]string) {
@@ -438,13 +439,17 @@ func B(util T) { util.Run() }
 
 func TestBuildDeterministic(t *testing.T) {
 	root := t.TempDir()
+	// pkg defines D in two files, as build-tag variants do, so resolution
+	// must pick the same declaration on every build.
 	writeFiles(t, root, map[string]string{
-		"go.mod": "module m\n",
-		"a.go":   "package m\nfunc A() { B() }\n",
-		"b.go":   "package m\nfunc B() {}\n",
-		"c/c.py": "def c(): pass\n",
+		"go.mod":    "module m\n",
+		"a.go":      "package m\n\nimport \"m/pkg\"\n\nfunc A() { B(); pkg.D() }\n",
+		"b.go":      "package m\nfunc B() {}\n",
+		"pkg/d1.go": "package pkg\nfunc D() {}\n",
+		"pkg/d2.go": "package pkg\nfunc D() {}\n",
+		"c/c.py":    "def c(): pass\n",
 	})
-	var out [2]bytes.Buffer
+	var out [4]bytes.Buffer
 	for i := range out {
 		g, err := Build(root, Options{})
 		if err != nil {
@@ -454,7 +459,21 @@ func TestBuildDeterministic(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if !bytes.Equal(out[0].Bytes(), out[1].Bytes()) {
-		t.Errorf("Build not deterministic:\n%s\n---\n%s", out[0].String(), out[1].String())
+	for i := 1; i < len(out); i++ {
+		if !bytes.Equal(out[0].Bytes(), out[i].Bytes()) {
+			t.Fatalf("Build not deterministic:\n%s\n---\n%s", out[0].String(), out[i].String())
+		}
+	}
+}
+
+func TestSignatureRuneBoundary(t *testing.T) {
+	src := []byte("func " + strings.Repeat("a", sigCap-6) + "é()")
+	d := decl{Start: 0, End: uint32(len(src)), SigEnd: uint32(len(src))}
+	s := signature(src, d)
+	if !utf8.ValidString(s) {
+		t.Errorf("signature is not valid UTF-8: %q", s)
+	}
+	if len(s) > sigCap {
+		t.Errorf("signature length %d exceeds cap %d", len(s), sigCap)
 	}
 }

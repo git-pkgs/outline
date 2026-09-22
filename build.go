@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"unicode/utf8"
 
 	"github.com/git-pkgs/gitignore"
 )
@@ -87,7 +88,6 @@ func Build(root string, opts Options) (*Graph, error) {
 	r := newResolver(abs, files, opts.Resolution)
 	r.emitModules(g)
 	r.emitCalls(g)
-	g.Warnings = append(g.Warnings, r.warnings...)
 
 	g.sortStable()
 	return g, nil
@@ -124,13 +124,13 @@ func analyseOne(root, path string, opts Options) fileAnalysis {
 		fa.skipped = "too-large"
 		return fa
 	}
+	if _, ok := detect(path); !ok {
+		fa.skipped = "unsupported"
+		return fa
+	}
 	src, err := os.ReadFile(full)
 	if err != nil {
 		fa.skipped = "unreadable"
-		return fa
-	}
-	if _, ok := detect(path); !ok {
-		fa.skipped = "unsupported"
 		return fa
 	}
 	a, ok := analyse(src, path)
@@ -198,7 +198,11 @@ func signature(src []byte, d decl) string {
 	end := min(d.SigEnd, uint32(len(src)))
 	s := sanitise(string(src[d.Start:end]))
 	if len(s) > sigCap {
-		s = s[:sigCap]
+		cut := sigCap
+		for cut > 0 && !utf8.RuneStart(s[cut]) {
+			cut--
+		}
+		s = s[:cut]
 	}
 	return s
 }
