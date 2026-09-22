@@ -131,13 +131,13 @@ test:
 
 func TestDetectByName(t *testing.T) {
 	cases := map[string]string{
-		"Makefile":           "make",
-		"path/to/Makefile":   "make",
-		"CMakeLists.txt":     "cmake",
-		"BUILD":              "starlark",
-		"src/BUILD.bazel":    "starlark",
-		"main.go":            "go",
-		"README":             "",
+		"Makefile":         "make",
+		"path/to/Makefile": "make",
+		"CMakeLists.txt":   "cmake",
+		"BUILD":            "starlark",
+		"src/BUILD.bazel":  "starlark",
+		"main.go":          "go",
+		"README":           "",
 	}
 	for in, want := range cases {
 		l, ok := detect(in)
