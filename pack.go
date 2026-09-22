@@ -76,6 +76,7 @@ func Pack(root string, opts Options) (*Result, error) {
 
 	m := gitignore.New(abs)
 	m.AddPatterns(defaultIgnore, "")
+	m.AddPatterns(packIgnore, "")
 	for _, p := range opts.Ignore {
 		m.AddPatterns([]byte(p+"\n"), "")
 	}

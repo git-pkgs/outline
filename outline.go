@@ -102,41 +102,41 @@ var langs = map[string]*lang{
 }
 
 var byExt = map[string]string{
-	".go":    "go",
-	".rb":    "ruby",
-	".py":    "python",
-	".pyi":   "python",
-	".js":    "javascript",
-	".jsx":   "javascript",
-	".mjs":   "javascript",
-	".cjs":   "javascript",
-	".ts":    "typescript",
-	".mts":   "typescript",
-	".cts":   "typescript",
-	".tsx":   "tsx",
-	".rs":    "rust",
-	".java":  "java",
-	".c":     "c",
-	".h":     "c",
-	".cpp":   "cpp",
-	".cc":    "cpp",
-	".cxx":   "cpp",
-	".hpp":   "cpp",
-	".hh":    "cpp",
-	".hxx":   "cpp",
-	".cs":    "csharp",
-	".php":   "php",
-	".kt":    "kotlin",
-	".kts":   "kotlin",
-	".swift": "swift",
-	".scala": "scala",
-	".sc":    "scala",
-	".dart":  "dart",
-	".ex":    "elixir",
-	".exs":   "elixir",
-	".erl":   "erlang",
-	".hrl":   "erlang",
-	".hs":    "haskell",
+	".go":     "go",
+	".rb":     "ruby",
+	".py":     "python",
+	".pyi":    "python",
+	".js":     "javascript",
+	".jsx":    "javascript",
+	".mjs":    "javascript",
+	".cjs":    "javascript",
+	".ts":     "typescript",
+	".mts":    "typescript",
+	".cts":    "typescript",
+	".tsx":    "tsx",
+	".rs":     "rust",
+	".java":   "java",
+	".c":      "c",
+	".h":      "c",
+	".cpp":    "cpp",
+	".cc":     "cpp",
+	".cxx":    "cpp",
+	".hpp":    "cpp",
+	".hh":     "cpp",
+	".hxx":    "cpp",
+	".cs":     "csharp",
+	".php":    "php",
+	".kt":     "kotlin",
+	".kts":    "kotlin",
+	".swift":  "swift",
+	".scala":  "scala",
+	".sc":     "scala",
+	".dart":   "dart",
+	".ex":     "elixir",
+	".exs":    "elixir",
+	".erl":    "erlang",
+	".hrl":    "erlang",
+	".hs":     "haskell",
 	".clj":    "clojure",
 	".cljs":   "clojure",
 	".cljc":   "clojure",
@@ -187,6 +187,9 @@ func detect(filename string) (*lang, bool) {
 	if i := strings.LastIndexByte(base, '/'); i >= 0 {
 		base = base[i+1:]
 	}
+	if strings.HasSuffix(base, ".gemspec") {
+		return langs["ruby"], true
+	}
 	if name, ok := byName[base]; ok {
 		return langs[name], true
 	}
@@ -199,6 +202,26 @@ func detect(filename string) (*lang, bool) {
 		return nil, false
 	}
 	return langs[name], true
+}
+
+func detectSource(src []byte, filename string) (*lang, bool) {
+	if l, ok := detect(filename); ok {
+		return l, true
+	}
+	line, _, _ := bytes.Cut(src, []byte{'\n'})
+	if !bytes.HasPrefix(line, []byte("#!")) {
+		return nil, false
+	}
+	for field := range bytes.FieldsSeq(line[2:]) {
+		name := field
+		if i := bytes.LastIndexByte(name, '/'); i >= 0 {
+			name = name[i+1:]
+		}
+		if bytes.HasPrefix(name, []byte("ruby")) {
+			return langs["ruby"], true
+		}
+	}
+	return nil, false
 }
 
 // chunk is a contiguous run of source lines to keep.
@@ -265,7 +288,7 @@ func outlineSource(src []byte, filename string, collectSymbols bool) (string, []
 }
 
 func parseSource(src []byte, filename string) (*lang, *ts.Tree, bool) {
-	l, ok := detect(filename)
+	l, ok := detectSource(src, filename)
 	if !ok {
 		return nil, nil, false
 	}
@@ -375,6 +398,12 @@ func indexLines(src []byte) (lineStart, lineEnd []int) {
 // Supported reports whether Outline can handle the given filename.
 func Supported(filename string) bool {
 	_, ok := detect(filename)
+	return ok
+}
+
+// SupportedSource reports whether Outline can detect the language of source.
+func SupportedSource(src []byte, filename string) bool {
+	_, ok := detectSource(src, filename)
 	return ok
 }
 

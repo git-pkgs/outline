@@ -41,6 +41,15 @@ func nodeByName(g *Graph, kind, name string) *Node {
 	return nil
 }
 
+func nodeByQualified(g *Graph, qualified string) *Node {
+	for i := range g.Nodes {
+		if g.Nodes[i].Qualified == qualified {
+			return &g.Nodes[i]
+		}
+	}
+	return nil
+}
+
 func TestBuildGoCrossPackage(t *testing.T) {
 	root := t.TempDir()
 	writeFiles(t, root, map[string]string{
@@ -156,6 +165,175 @@ def handler(name):
 	}
 	if e := edge(g, handler.ID, extCall, RelCalls); e == nil {
 		t.Error("missing handler -> subprocess.call external edge")
+	}
+}
+
+func TestBuildRubyCalls(t *testing.T) {
+	root := t.TempDir()
+	writeFiles(t, root, map[string]string{
+		"worker.rb": `class Worker
+  def run(client)
+    helper()
+    self.helper
+    File.read("config.yml")
+    client.get("/")
+  end
+
+  def helper
+  end
+
+  def self.run
+    build()
+  end
+
+  def self.build
+  end
+
+  build()
+end
+
+def Worker.configure
+end
+
+def system(command)
+end
+
+def invoke
+  system("echo")
+  Worker.run
+  Worker.configure
+end
+`,
+	})
+
+	g, err := Build(root, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	worker := nodeByQualified(g, "Worker")
+	instanceRun := nodeByQualified(g, "Worker#run")
+	singletonRun := nodeByQualified(g, "Worker.run")
+	helper := nodeByQualified(g, "Worker#helper")
+	build := nodeByQualified(g, "Worker.build")
+	configure := nodeByQualified(g, "Worker.configure")
+	invoke := nodeByQualified(g, "invoke")
+	localSystem := nodeByQualified(g, "system")
+	if worker == nil || instanceRun == nil || singletonRun == nil || helper == nil || build == nil || configure == nil || invoke == nil || localSystem == nil {
+		t.Fatalf("missing Ruby nodes: worker=%v instance=%v singleton=%v helper=%v build=%v configure=%v invoke=%v system=%v",
+			worker, instanceRun, singletonRun, helper, build, configure, invoke, localSystem)
+	}
+
+	if e := edge(g, instanceRun.ID, helper.ID, RelCalls); e == nil || e.Conf != ConfExtracted || e.Call == nil {
+		t.Errorf("missing instance helper call with facts: %v", e)
+	}
+	if e := edge(g, singletonRun.ID, build.ID, RelCalls); e == nil || e.Conf != ConfExtracted {
+		t.Errorf("missing singleton build call: %v", e)
+	}
+	if e := edge(g, worker.ID, build.ID, RelCalls); e == nil || e.Conf != ConfExtracted {
+		t.Errorf("missing class-body build call: %v", e)
+	}
+	if e := edge(g, invoke.ID, localSystem.ID, RelCalls); e == nil || e.Conf != ConfExtracted {
+		t.Errorf("local system should shadow Kernel.system: %v", e)
+	}
+	if e := edge(g, invoke.ID, singletonRun.ID, RelCalls); e == nil || e.Conf != ConfExtracted {
+		t.Errorf("missing Worker.run call: %v", e)
+	}
+	if e := edge(g, invoke.ID, configure.ID, RelCalls); e == nil || e.Conf != ConfExtracted {
+		t.Errorf("missing Worker.configure call: %v", e)
+	}
+
+	read := ExtID("ruby", "File", "read")
+	if e := edge(g, instanceRun.ID, read, RelCalls); e == nil || e.Call == nil || len(e.Call.Arguments) != 1 {
+		t.Errorf("missing File.read external call facts: %v", e)
+	}
+	get := ExtID("ruby", "client", "get")
+	if e := edge(g, instanceRun.ID, get, RelCalls); e == nil || e.Call == nil || e.Call.ReceiverKind != ReceiverLocal {
+		t.Errorf("missing unresolved client.get call facts: %v", e)
+	}
+}
+
+func TestBuildRubyLoadsAndExecutables(t *testing.T) {
+	root := t.TempDir()
+	writeFiles(t, root, map[string]string{
+		"app.rb": `require "json"
+require_relative "lib/helper"
+Kernel.require "net/http"
+require "#{name}/client"
+require File.join("plugins", name)
+`,
+		"lib/helper.rb":  "module Helper\nend\n",
+		"bin/tool":       "#!/usr/bin/env ruby\nFile.delete(\"stale\")\n",
+		"sample.gemspec": "Gem::Specification.new do |spec|\n  spec.name = \"sample\"\nend\n",
+	})
+
+	g, err := Build(root, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, file := range []string{"app.rb", "lib/helper.rb", "bin/tool", "sample.gemspec"} {
+		if g.Node(FileID(file)) == nil {
+			t.Errorf("missing Ruby file node %q", file)
+		}
+	}
+	if e := edge(g, FileID("bin/tool"), ExtID("ruby", "File", "delete"), RelCalls); e == nil {
+		t.Error("Ruby executable was selected but not analysed")
+	}
+
+	relative := ModID("ruby", "lib/helper")
+	if e := edge(g, FileID("app.rb"), relative, RelLoads); e == nil || e.Operation != "require_relative" {
+		t.Errorf("missing require_relative load edge: %v", e)
+	}
+	if e := edge(g, relative, FileID("lib/helper.rb"), RelContains); e == nil {
+		t.Errorf("require_relative did not resolve helper: %v", e)
+	}
+	if g.Node(ModID("ruby", "#{name}/client")) != nil {
+		t.Error("dynamic require became a fixed module")
+	}
+	if g.Node(ModID("ruby", "plugins")) != nil {
+		t.Error("nested File.join string became a fixed module")
+	}
+	if e := edge(g, FileID("app.rb"), ExtID("ruby", "", "require"), RelCalls); e == nil {
+		t.Error("dynamic require was omitted instead of retained as an unresolved call")
+	}
+}
+
+func TestShebangCandidate(t *testing.T) {
+	cases := map[string]bool{
+		"bin/tool":      true,
+		"Rakefile":      true,
+		"bin/v1.2/tool": true,
+		"lib/helper.rb": false,
+		"logo.png":      false,
+		".gitignore":    false,
+	}
+	for path, want := range cases {
+		if got := shebangCandidate(path); got != want {
+			t.Errorf("shebangCandidate(%q) = %t, want %t", path, got, want)
+		}
+	}
+}
+
+func TestBuildRubyConstantShadow(t *testing.T) {
+	root := t.TempDir()
+	writeFiles(t, root, map[string]string{
+		"shadow.rb": `class File
+end
+
+def read
+  File.read("local")
+end
+`,
+	})
+	g, err := Build(root, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if g.Node(ExtID("ruby", "File", "read")) != nil {
+		t.Error("local File constant resolved as core File")
+	}
+	if g.Node(ExtID("ruby", "local:File", "read")) == nil {
+		t.Error("missing unresolved target for shadowing File constant")
 	}
 }
 

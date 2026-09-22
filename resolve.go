@@ -100,6 +100,10 @@ func (r *resolver) moduleID(f *fileAnalysis, imp Import) string {
 	if f.a.Lang == "python" && strings.HasPrefix(name, ".") {
 		name = path.Dir(f.path) + "/" + name
 	}
+	if f.a.Lang == "ruby" && imp.Relative {
+		name = path.Clean(path.Join(path.Dir(f.path), name))
+		name = strings.TrimSuffix(name, ".rb")
+	}
 	return ModID(f.a.Lang, name)
 }
 
@@ -121,11 +125,19 @@ func (r *resolver) emitModules(g *Graph) {
 				g.Nodes = append(g.Nodes, Node{
 					ID: mid, Kind: KindModule, Name: imp.Module,
 				})
-				r.modules[mid] = r.moduleFiles(f.a.Lang, imp.Module, p)
+			}
+			for _, resolved := range r.moduleFiles(f, imp) {
+				if !slices.Contains(r.modules[mid], resolved) {
+					r.modules[mid] = append(r.modules[mid], resolved)
+				}
+			}
+			rel := RelImports
+			if f.a.Lang == "ruby" {
+				rel = RelLoads
 			}
 			g.Edges = append(g.Edges, Edge{
-				From: fid, To: mid, Rel: RelImports, Conf: ConfExtracted,
-				File: p, Line: imp.Line,
+				From: fid, To: mid, Rel: rel, Conf: ConfExtracted,
+				File: p, Line: imp.Line, Operation: imp.Form,
 			})
 		}
 	}
@@ -140,12 +152,27 @@ func (r *resolver) emitModules(g *Graph) {
 
 // moduleFiles resolves an import module string to zero or more
 // repository-relative file paths already in r.files.
-func (r *resolver) moduleFiles(lang, module, from string) []string {
-	switch lang {
+func (r *resolver) moduleFiles(f *fileAnalysis, imp Import) []string {
+	switch f.a.Lang {
 	case "go":
-		return r.goModuleFiles(module)
+		return r.goModuleFiles(imp.Module)
 	case "python":
-		return r.pyModuleFiles(module, from)
+		return r.pyModuleFiles(imp.Module, f.path)
+	case "ruby":
+		return r.rubyModuleFiles(imp, f.path)
+	}
+	return nil
+}
+
+func (r *resolver) rubyModuleFiles(imp Import, from string) []string {
+	if !imp.Relative {
+		return nil
+	}
+	base := path.Clean(path.Join(path.Dir(from), imp.Module))
+	for _, candidate := range []string{base, base + ".rb"} {
+		if _, ok := r.files[candidate]; ok {
+			return []string{candidate}
+		}
 	}
 	return nil
 }
@@ -331,15 +358,19 @@ func (r *resolver) emitCalls(g *Graph) {
 					Qualified: extQualified(to),
 				})
 			}
+			site := c
 			g.Edges = append(g.Edges, Edge{
 				From: from, To: to, Rel: RelCalls, Conf: conf,
-				File: p, Line: c.Line,
+				File: p, Line: c.Line, Call: &site,
 			})
 		}
 	}
 }
 
 func (r *resolver) resolveCall(f *fileAnalysis, sc scope, c Call) (string, string) {
+	if f.a.Lang == "ruby" {
+		return r.resolveRubyCall(f, c)
+	}
 	if c.Receiver == "" {
 		if sid, shadowed := lexical(f, sc, c.In, c.Name); sid != "" {
 			return sid, ConfExtracted
@@ -361,6 +392,79 @@ func (r *resolver) resolveCall(f *fileAnalysis, sc scope, c Call) (string, strin
 		return ExtID(f.a.Lang, modName(mid), c.Name), ConfInferred
 	}
 	return ExtID(f.a.Lang, c.Receiver, c.Name), ConfInferred
+}
+
+func (r *resolver) resolveRubyCall(f *fileAnalysis, c Call) (string, string) {
+	switch c.ReceiverKind {
+	case ReceiverBare, ReceiverSelf:
+		owner, singleton := rubyCallContext(f.a.Decls, c.In)
+		if sid := rubyMethod(f, owner, c.Name, singleton); sid != "" {
+			return sid, ConfExtracted
+		}
+	case ReceiverConstant:
+		receiver := strings.TrimPrefix(c.Receiver, "::")
+		if sid, local := rubySingletonMethod(f, receiver, c.Name); sid != "" {
+			return sid, ConfExtracted
+		} else if local {
+			return ExtID("ruby", "local:"+receiver, c.Name), ConfInferred
+		}
+	}
+	return ExtID("ruby", c.Receiver, c.Name), ConfInferred
+}
+
+func rubyCallContext(decls []decl, in int) (owner int, singleton bool) {
+	owner = -1
+	if in < 0 {
+		return owner, false
+	}
+	switch decls[in].Kind {
+	case KindFunc:
+		singleton = decls[in].Singleton
+	case KindClass, KindType:
+		singleton = true
+	}
+	for at := in; at >= 0; at = decls[at].Parent {
+		if decls[at].Kind == KindClass || decls[at].Kind == KindType {
+			return at, singleton
+		}
+	}
+	return owner, singleton
+}
+
+func rubyMethod(f *fileAnalysis, owner int, name string, singleton bool) string {
+	for i, d := range f.a.Decls {
+		if d.Parent == owner && d.Kind == KindFunc && d.Name == name && d.Singleton == singleton {
+			return f.a.Decls[i].symID(f.path)
+		}
+	}
+	return ""
+}
+
+func rubySingletonMethod(f *fileAnalysis, receiver, name string) (target string, local bool) {
+	for i, d := range f.a.Decls {
+		if d.Kind == KindFunc && d.Singleton && d.Owner == receiver && d.Name == name {
+			if target != "" {
+				return "", true
+			}
+			target = d.symID(f.path)
+			local = true
+			continue
+		}
+		if d.Kind != KindClass && d.Kind != KindType {
+			continue
+		}
+		if d.Name != receiver && rubyQualified(f.a.Decls, i) != receiver {
+			continue
+		}
+		local = true
+		if sid := rubyMethod(f, i, name, true); sid != "" {
+			if target != "" {
+				return "", true
+			}
+			target = sid
+		}
+	}
+	return target, local
 }
 
 // lexical walks outward from the enclosing declaration, returning the
