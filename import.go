@@ -7,6 +7,7 @@ import (
 )
 
 const (
+	importDeclaration        = "import_declaration"
 	importStatement          = "import_statement"
 	javascriptCallExpression = "call_expression"
 )
@@ -34,6 +35,12 @@ func importsFor(src []byte, l *lang, root *ts.Node) ([]Import, bool) {
 		return javascriptImports(src, l.language, root), true
 	case "rust":
 		return rustImports(src, l.language, root), true
+	case "java":
+		return javaImports(src, l.language, root), true
+	case "kotlin":
+		return kotlinImports(src, l.language, root), true
+	case "csharp":
+		return csharpImports(src, l.language, root), true
 	case "php":
 		return phpImports(src, l.language, root), true
 	case "elixir":

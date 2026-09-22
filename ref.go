@@ -31,6 +31,12 @@ func Refs(src []byte, filename string, receivers []string) ([]Ref, bool) {
 		refs = memberRefs(src, l.language, tree.RootNode(), wanted, "member_expression", "property", "identifier")
 	case "rust":
 		refs = memberRefs(src, l.language, tree.RootNode(), wanted, "scoped_identifier", "name", "identifier")
+	case "java":
+		refs = javaRefs(src, l.language, tree.RootNode(), wanted)
+	case "kotlin":
+		refs = kotlinRefs(src, l.language, tree.RootNode(), wanted)
+	case "csharp":
+		refs = csharpRefs(src, l.language, tree.RootNode(), wanted)
 	case "php":
 		refs = phpRefs(src, l.language, tree.RootNode(), wanted)
 	case "elixir":

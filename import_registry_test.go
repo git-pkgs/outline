@@ -5,6 +5,109 @@ import (
 	"testing"
 )
 
+func TestJavaKotlinCsharpImports(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		filename string
+		src      string
+		want     []Import
+	}{
+		{
+			filename: "App.java",
+			src: `package app;
+import java.util.List;
+import java.util.*;
+import static java.util.Collections.emptyList;
+import static java.lang.Math.*;
+import java.util.Map.Entry;
+import java /* path comment */ . util . Set;
+// import ignored.Type;
+class App { String text = "import ignored.Type;"; }
+`,
+			want: []Import{
+				{Module: "java.util", Kind: ImportNamed, Names: []Name{{Name: "List"}}, Line: 2},
+				{Module: "java.util", Kind: ImportWildcard, Line: 3},
+				{Module: "java.util.Collections", Kind: ImportNamed, Names: []Name{{Name: "emptyList"}}, Line: 4},
+				{Module: "java.lang.Math", Kind: ImportWildcard, Line: 5},
+				{Module: "java.util.Map", Kind: ImportNamed, Names: []Name{{Name: "Entry"}}, Line: 6},
+				{Module: "java.util", Kind: ImportNamed, Names: []Name{{Name: "Set"}}, Line: 7},
+			},
+		},
+		{
+			filename: "App.kt",
+			src: `package app
+import java.util.List
+import kotlin.collections.*
+import java.util.Collections as C
+import kotlin.io.println as printLine
+import java /* path comment */ . util . Set
+// import ignored.Type
+val text = "import ignored.Type"
+`,
+			want: []Import{
+				{Module: "java.util", Kind: ImportNamed, Names: []Name{{Name: "List"}}, Line: 2},
+				{Module: "kotlin.collections", Kind: ImportWildcard, Line: 3},
+				{Module: "java.util", Kind: ImportNamed, Names: []Name{{Name: "Collections", Alias: "C"}}, Line: 4},
+				{Module: "kotlin.io", Kind: ImportNamed, Names: []Name{{Name: "println", Alias: "printLine"}}, Line: 5},
+				{Module: "java.util", Kind: ImportNamed, Names: []Name{{Name: "Set"}}, Line: 6},
+			},
+		},
+		{
+			filename: "App.kts",
+			src:      "import java.io.File as F\nprintln(F.separator)\n",
+			want: []Import{
+				{Module: "java.io", Kind: ImportNamed, Names: []Name{{Name: "File", Alias: "F"}}, Line: 1},
+			},
+		},
+		{
+			filename: "App.cs",
+			src: `global using System;
+global using IO = System.IO;
+global using static System.Math;
+using System.Collections.Generic;
+using Text = System.String;
+using static System.Console;
+using Root = global::System.Text;
+using System /* path comment */ . Threading;
+// using Ignored;
+namespace App {
+    using Local = System.IO.File;
+    class Program {
+        string text = "using Ignored;";
+        void Run() {
+            using var stream = Local.OpenRead("x");
+            using (var reader = new System.IO.StreamReader(stream)) { reader.Read(); }
+        }
+    }
+}
+`,
+			want: []Import{
+				{Module: "System", Kind: ImportWildcard, Line: 1},
+				{Module: "System.IO", Kind: ImportNamespace, Names: []Name{{Alias: "IO"}}, Line: 2},
+				{Module: "System.Math", Kind: ImportWildcard, Line: 3},
+				{Module: "System.Collections.Generic", Kind: ImportWildcard, Line: 4},
+				{Module: "System.String", Kind: ImportNamespace, Names: []Name{{Alias: "Text"}}, Line: 5},
+				{Module: "System.Console", Kind: ImportWildcard, Line: 6},
+				{Module: "System.Text", Kind: ImportNamespace, Names: []Name{{Alias: "Root"}}, Line: 7},
+				{Module: "System.Threading", Kind: ImportWildcard, Line: 8},
+				{Module: "System.IO.File", Kind: ImportNamespace, Names: []Name{{Alias: "Local"}}, Line: 11},
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.filename, func(t *testing.T) {
+			t.Parallel()
+			got, ok := Imports([]byte(test.src), test.filename)
+			if !ok {
+				t.Fatal("Imports() supported = false")
+			}
+			if !reflect.DeepEqual(got, test.want) {
+				t.Fatalf("Imports() = %#v, want %#v", got, test.want)
+			}
+		})
+	}
+}
+
 func TestRegistryLanguageImports(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
