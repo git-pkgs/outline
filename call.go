@@ -13,9 +13,12 @@ const (
 	ReceiverExpression ReceiverKind = "expression"
 )
 
+// DispatchKind describes how a call reaches its target.
+type DispatchKind string
+
 const (
-	DispatchDirect   = "direct"
-	DispatchSubshell = "subshell"
+	DispatchDirect   DispatchKind = "direct"
+	DispatchSubshell DispatchKind = "subshell"
 )
 
 // Argument is one source argument to a call.
@@ -32,7 +35,7 @@ type Call struct {
 	Receiver     string       `json:"receiver,omitempty"`
 	ReceiverKind ReceiverKind `json:"receiver_kind"`
 	Name         string       `json:"name"`
-	Dispatch     string       `json:"dispatch"`
+	Dispatch     DispatchKind `json:"dispatch"`
 	Arguments    []Argument   `json:"arguments,omitempty"`
 	Line         int          `json:"line"`
 	Start        uint32       `json:"start"`

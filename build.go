@@ -124,6 +124,10 @@ func analyseOne(root, path string, opts Options) fileAnalysis {
 		fa.skipped = "too-large"
 		return fa
 	}
+	if _, ok := detect(path); !ok && !shebangCandidate(path) {
+		fa.skipped = "unsupported"
+		return fa
+	}
 	src, err := os.ReadFile(full)
 	if err != nil {
 		fa.skipped = "unreadable"
@@ -141,6 +145,17 @@ func analyseOne(root, path string, opts Options) fileAnalysis {
 	fa.src = src
 	fa.a = a
 	return fa
+}
+
+// shebangCandidate reports whether a path might be identified by its
+// content: only extensionless files are read for shebang sniffing, so
+// files with unsupported extensions are skipped without reading.
+func shebangCandidate(path string) bool {
+	base := path
+	if i := strings.LastIndexByte(base, '/'); i >= 0 {
+		base = base[i+1:]
+	}
+	return !strings.Contains(base, ".")
 }
 
 func emitFileNodes(g *Graph, files []fileAnalysis) {

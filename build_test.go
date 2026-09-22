@@ -298,6 +298,22 @@ require File.join("plugins", name)
 	}
 }
 
+func TestShebangCandidate(t *testing.T) {
+	cases := map[string]bool{
+		"bin/tool":      true,
+		"Rakefile":      true,
+		"bin/v1.2/tool": true,
+		"lib/helper.rb": false,
+		"logo.png":      false,
+		".gitignore":    false,
+	}
+	for path, want := range cases {
+		if got := shebangCandidate(path); got != want {
+			t.Errorf("shebangCandidate(%q) = %t, want %t", path, got, want)
+		}
+	}
+}
+
 func TestBuildRubyConstantShadow(t *testing.T) {
 	root := t.TempDir()
 	writeFiles(t, root, map[string]string{
