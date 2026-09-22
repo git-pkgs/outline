@@ -6,6 +6,85 @@ import (
 	ts "github.com/odvcencio/gotreesitter"
 )
 
+func javaRefs(src []byte, language *ts.Language, root *ts.Node, wanted map[string]bool) []Ref {
+	var refs []Ref
+	walkNamed(root, func(node *ts.Node) {
+		var member *ts.Node
+		switch node.Type(language) {
+		case "method_invocation":
+			member = node.ChildByFieldName("name", language)
+		case "field_access":
+			member = node.ChildByFieldName("field", language)
+		default:
+			return
+		}
+		receiver := node.ChildByFieldName("object", language)
+		if receiver == nil || member == nil || receiver.Type(language) != "identifier" || !wanted[receiver.Text(src)] {
+			return
+		}
+		refs = append(refs, Ref{Receiver: receiver.Text(src), Member: member.Text(src), Line: sourceLine(member)})
+	})
+	return refs
+}
+
+func kotlinRefs(src []byte, language *ts.Language, root *ts.Node, wanted map[string]bool) []Ref {
+	var refs []Ref
+	walkNamed(root, func(node *ts.Node) {
+		if node.Type(language) != "navigation_expression" {
+			return
+		}
+		receiver := firstDescendantType(node, language, "simple_identifier")
+		if receiver == nil || receiver.Parent() != node || !wanted[receiver.Text(src)] {
+			return
+		}
+		for i := range node.NamedChildCount() {
+			suffix := node.NamedChild(i)
+			if suffix.Type(language) != "navigation_suffix" {
+				continue
+			}
+			member := firstDescendantType(suffix, language, "simple_identifier")
+			if member != nil {
+				refs = append(refs, Ref{Receiver: receiver.Text(src), Member: member.Text(src), Line: sourceLine(member)})
+			}
+			return
+		}
+	})
+	return refs
+}
+
+func csharpRefs(src []byte, language *ts.Language, root *ts.Node, wanted map[string]bool) []Ref {
+	var refs []Ref
+	walkNamed(root, func(node *ts.Node) {
+		var receiver, member *ts.Node
+		switch node.Type(language) {
+		case "member_access_expression":
+			receiver = node.ChildByFieldName("expression", language)
+			member = node.ChildByFieldName("name", language)
+		case "conditional_access_expression":
+			receiver = node.ChildByFieldName("condition", language)
+			for i := range node.NamedChildCount() {
+				binding := node.NamedChild(i)
+				if binding.Type(language) == "member_binding_expression" {
+					member = binding.ChildByFieldName("name", language)
+				}
+			}
+		default:
+			return
+		}
+		if receiver == nil || member == nil || receiver.Type(language) != "identifier" || !wanted[receiver.Text(src)] {
+			return
+		}
+		if member.Type(language) == "generic_name" {
+			member = firstDescendantType(member, language, "identifier")
+			if member == nil {
+				return
+			}
+		}
+		refs = append(refs, Ref{Receiver: receiver.Text(src), Member: member.Text(src), Line: sourceLine(member)})
+	})
+	return refs
+}
+
 func dartRefs(src []byte, language *ts.Language, root *ts.Node, wanted map[string]bool) []Ref {
 	var refs []Ref
 	walkNamed(root, func(node *ts.Node) {

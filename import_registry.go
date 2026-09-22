@@ -6,6 +6,99 @@ import (
 	ts "github.com/odvcencio/gotreesitter"
 )
 
+func javaImports(src []byte, language *ts.Language, root *ts.Node) []Import {
+	var imports []Import
+	walkNamed(root, func(node *ts.Node) {
+		if node.Type(language) != importDeclaration {
+			return
+		}
+		parts := descendantTexts(src, language, node, "identifier")
+		if len(parts) == 0 {
+			return
+		}
+		imported := Import{Module: strings.Join(parts, "."), Kind: ImportWildcard, Line: sourceLine(node)}
+		if firstDescendantType(node, language, "asterisk") == nil {
+			imported.Module = strings.Join(parts[:len(parts)-1], ".")
+			imported.Kind = ImportNamed
+			imported.Names = []Name{{Name: parts[len(parts)-1]}}
+		}
+		imports = append(imports, imported)
+	})
+	return imports
+}
+
+func kotlinImports(src []byte, language *ts.Language, root *ts.Node) []Import {
+	var imports []Import
+	walkNamed(root, func(node *ts.Node) {
+		if node.Type(language) != "import_header" {
+			return
+		}
+		path := firstDescendantType(node, language, "identifier")
+		parts := descendantTexts(src, language, path, "simple_identifier")
+		if len(parts) == 0 {
+			return
+		}
+		imported := Import{Module: strings.Join(parts, "."), Kind: ImportWildcard, Line: sourceLine(node)}
+		if firstDescendantType(node, language, "wildcard_import") == nil {
+			name := Name{Name: parts[len(parts)-1]}
+			alias := firstDescendantType(node, language, "import_alias")
+			if alias != nil {
+				name.Alias = directChildText(src, language, alias, "type_identifier")
+			}
+			imported.Module = strings.Join(parts[:len(parts)-1], ".")
+			imported.Kind = ImportNamed
+			imported.Names = []Name{name}
+		}
+		imports = append(imports, imported)
+	})
+	return imports
+}
+
+func csharpImports(src []byte, language *ts.Language, root *ts.Node) []Import {
+	var imports []Import
+	walkNamed(root, func(node *ts.Node) {
+		if node.Type(language) != "using_directive" {
+			return
+		}
+		alias := node.ChildByFieldName("name", language)
+		for i := range node.NamedChildCount() {
+			target := node.NamedChild(i)
+			if target == alias || target.IsExtra() {
+				continue
+			}
+			imported := Import{
+				Module: csharpImportTarget(src, language, target),
+				Kind:   ImportWildcard,
+				Line:   sourceLine(node),
+			}
+			if alias != nil {
+				imported.Kind = ImportNamespace
+				imported.Names = []Name{{Alias: alias.Text(src)}}
+			}
+			imports = append(imports, imported)
+			return
+		}
+	})
+	return imports
+}
+
+func csharpImportTarget(src []byte, language *ts.Language, node *ts.Node) string {
+	name := node.ChildByFieldName("name", language)
+	switch node.Type(language) {
+	case "qualified_name":
+		qualifier := node.ChildByFieldName("qualifier", language)
+		if qualifier != nil && name != nil {
+			return csharpImportTarget(src, language, qualifier) + "." + name.Text(src)
+		}
+	case "alias_qualified_name":
+		alias := node.ChildByFieldName("alias", language)
+		if alias != nil && alias.Text(src) == "global" && name != nil {
+			return name.Text(src)
+		}
+	}
+	return node.Text(src)
+}
+
 func dartImports(src []byte, language *ts.Language, root *ts.Node) []Import {
 	var imports []Import
 	walkNamed(root, func(node *ts.Node) {
@@ -55,7 +148,7 @@ func dartImports(src []byte, language *ts.Language, root *ts.Node) []Import {
 func swiftImports(src []byte, language *ts.Language, root *ts.Node) []Import {
 	var imports []Import
 	walkNamed(root, func(node *ts.Node) {
-		if node.Type(language) != "import_declaration" {
+		if node.Type(language) != importDeclaration {
 			return
 		}
 		value := node.Text(src)
@@ -494,7 +587,7 @@ func zigImports(src []byte, language *ts.Language, root *ts.Node) []Import {
 func dImports(src []byte, language *ts.Language, root *ts.Node) []Import {
 	var imports []Import
 	walkNamed(root, func(node *ts.Node) {
-		if node.Type(language) != "import_declaration" {
+		if node.Type(language) != importDeclaration {
 			return
 		}
 		var importedNodes []*ts.Node
