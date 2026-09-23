@@ -7,6 +7,18 @@ are kept. Unsupported file types pass through unchanged.
 Pure Go, no CGo. Parsing is done by [gotreesitter], file selection respects
 `.gitignore` via [git-pkgs/gitignore]. Full API docs are on [pkg.go.dev].
 
+## Installation
+
+Add the library to your Go module:
+
+```sh
+go get github.com/git-pkgs/outline
+```
+
+For the CLI, see [outline binary](#outline-binary).
+
+## Usage
+
 ```go
 import "github.com/git-pkgs/outline"
 
@@ -167,4 +179,4 @@ gotreesitter's full-parse path; chunk extraction and rendering barely register.
 
 ## License
 
-MIT
+[MIT](LICENSE).
