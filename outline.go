@@ -208,18 +208,8 @@ func detectSource(src []byte, filename string) (*lang, bool) {
 	if l, ok := detect(filename); ok {
 		return l, true
 	}
-	line, _, _ := bytes.Cut(src, []byte{'\n'})
-	if !bytes.HasPrefix(line, []byte("#!")) {
-		return nil, false
-	}
-	for field := range bytes.FieldsSeq(line[2:]) {
-		name := field
-		if i := bytes.LastIndexByte(name, '/'); i >= 0 {
-			name = name[i+1:]
-		}
-		if bytes.HasPrefix(name, []byte("ruby")) {
-			return langs["ruby"], true
-		}
+	if rubyShebang(src) {
+		return langs["ruby"], true
 	}
 	return nil, false
 }
