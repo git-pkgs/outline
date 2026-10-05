@@ -157,10 +157,15 @@ func (r *resolver) rubyFileScope(f *fileAnalysis) rubyScope {
 	if sc, ok := r.rubyScopes[f.path]; ok {
 		return sc
 	}
+	files := r.rubyFiles(f)
+	key := rubyScopeKey(files)
+	if sc, ok := r.rubyScopes[key]; ok {
+		r.rubyScopes[f.path] = sc
+		return sc
+	}
 	sc := rubyScope{
 		methods: make(map[rubyMethodKey]string), constants: make(map[string]string), copies: make(map[string]bool),
 	}
-	files := r.rubyFiles(f)
 	for _, loaded := range files {
 		for i, d := range loaded.a.Decls {
 			if d.Kind != KindClass && d.Kind != KindType && d.Kind != KindConst {
@@ -179,7 +184,18 @@ func (r *resolver) rubyFileScope(f *fileAnalysis) rubyScope {
 		rubyIndexMethods(sc, loaded)
 	}
 	r.rubyScopes[f.path] = sc
+	r.rubyScopes[key] = sc
 	return sc
+}
+
+func rubyScopeKey(files []*fileAnalysis) string {
+	sort.Slice(files, func(i, j int) bool { return files[i].path < files[j].path })
+	paths := make([]string, len(files))
+	for i, f := range files {
+		paths[i] = f.path
+	}
+	// NUL cannot occur in a file path.
+	return "\x00" + strings.Join(paths, "\x00")
 }
 
 func rubyIndexMethods(sc rubyScope, f *fileAnalysis) {
