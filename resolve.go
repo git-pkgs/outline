@@ -36,6 +36,7 @@ type scope struct {
 	// children maps a decl index (or -1 for top level) to its direct
 	// child decl indices, for lexical resolution of nested calls.
 	children map[int][]int
+	bindings map[int][]binding
 }
 
 func newResolver(root string, files []fileAnalysis, hints ResolutionHints) *resolver {
@@ -271,6 +272,10 @@ func (r *resolver) fileScope(f *fileAnalysis) scope {
 		syms:     make(map[string]string),
 		mods:     make(map[string]string),
 		children: make(map[int][]int),
+		bindings: make(map[int][]binding),
+	}
+	for _, b := range f.a.Bindings {
+		sc.bindings[b.In] = append(sc.bindings[b.In], b)
 	}
 	if f.a.Lang == "go" {
 		maps.Copy(sc.syms, r.goPkgs[path.Dir(f.path)])
@@ -372,7 +377,7 @@ func (r *resolver) resolveCall(f *fileAnalysis, sc scope, c Call) (string, strin
 		return r.resolveRubyCall(f, c)
 	}
 	if c.Receiver == "" {
-		if sid, shadowed := lexical(f, sc, c.In, c.Name); sid != "" {
+		if sid, shadowed := lexical(f, sc, c.In, c.Name, c.Start); sid != "" {
 			return sid, ConfExtracted
 		} else if shadowed {
 			return ExtID(f.a.Lang, "", c.Name), ConfInferred
@@ -382,7 +387,7 @@ func (r *resolver) resolveCall(f *fileAnalysis, sc scope, c Call) (string, strin
 		}
 		return ExtID(f.a.Lang, "", c.Name), ConfInferred
 	}
-	if _, shadowed := lexical(f, sc, c.In, c.Receiver); shadowed {
+	if sid, shadowed := lexical(f, sc, c.In, c.Receiver, c.Start); sid != "" || shadowed {
 		return ExtID(f.a.Lang, c.Receiver, c.Name), ConfInferred
 	}
 	if mid, ok := sc.mods[c.Receiver]; ok {
@@ -471,12 +476,23 @@ func rubySingletonMethod(f *fileAnalysis, receiver, name string) (target string,
 // innermost visible decl matching name. If a parameter of an enclosing
 // function matches first, it reports shadowed instead. Class bodies do
 // not contribute their members to enclosed functions' scopes.
-func lexical(f *fileAnalysis, sc scope, in int, name string) (id string, shadowed bool) {
+func lexical(f *fileAnalysis, sc scope, in int, name string, pos uint32) (id string, shadowed bool) {
 	decls := f.a.Decls
 	at := in
 	for {
+		for _, b := range sc.bindings[at] {
+			if b.Name == name && b.Start <= pos && pos < b.End {
+				if b.Decl >= 0 {
+					return decls[b.Decl].symID(f.path), false
+				}
+				return "", true
+			}
+		}
 		if at < 0 || at == in || decls[at].Kind != KindClass {
 			for _, ci := range sc.children[at] {
+				if f.a.Lang == "go" && at >= 0 && decls[ci].Kind != KindFunc {
+					continue
+				}
 				if decls[ci].Name == name {
 					return decls[ci].symID(f.path), false
 				}

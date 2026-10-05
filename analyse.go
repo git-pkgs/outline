@@ -30,10 +30,11 @@ func (d decl) symID(path string) string {
 
 // analysis is the per-file fact set that graph resolution consumes.
 type analysis struct {
-	Lang    string
-	Decls   []decl
-	Imports []Import
-	Calls   []Call
+	Lang     string
+	Decls    []decl
+	Imports  []Import
+	Calls    []Call
+	Bindings []binding
 }
 
 // analyse parses src once and returns every fact the graph builder needs
@@ -53,6 +54,7 @@ func analyse(src []byte, filename string) (*analysis, bool) {
 	a.Decls = extractDecls(src, l, root, matches)
 	a.Imports, _ = importsFor(src, l, root)
 	a.Calls, _ = callsFor(src, l, root, a.Decls)
+	a.Bindings = bindingsFor(src, l, root, a.Decls)
 	return a, true
 }
 
