@@ -31,6 +31,7 @@ func (d decl) symID(path string) string {
 // analysis is the per-file fact set that graph resolution consumes.
 type analysis struct {
 	Lang     string
+	Package  string
 	Decls    []decl
 	Imports  []Import
 	Calls    []Call
@@ -51,6 +52,15 @@ func analyse(src []byte, filename string) (*analysis, bool) {
 	matches := l.query.Execute(tree)
 
 	a := &analysis{Lang: l.name}
+	if l.name == "go" {
+		for i := range root.NamedChildCount() {
+			node := root.NamedChild(i)
+			if node.Type(l.language) == "package_clause" && node.NamedChildCount() > 0 {
+				a.Package = node.NamedChild(0).Text(src)
+				break
+			}
+		}
+	}
 	a.Decls = extractDecls(src, l, root, matches)
 	a.Imports, _ = importsFor(src, l, root)
 	a.Calls, _ = callsFor(src, l, root, a.Decls)

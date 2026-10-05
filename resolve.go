@@ -17,7 +17,7 @@ type resolver struct {
 	files map[string]*fileAnalysis
 
 	goModule string
-	goPkgs   map[string]map[string]string
+	goPkgs   map[goPackage]map[string]string
 	pyRoots  []string
 
 	// modules maps a mod: ID to the repository-relative files that
@@ -57,26 +57,49 @@ func newResolver(root string, files []fileAnalysis, hints ResolutionHints) *reso
 	return r
 }
 
-// indexGoPackages groups top-level declarations from every Go file by
-// directory so same-package calls resolve without an import edge.
-func indexGoPackages(files []fileAnalysis) map[string]map[string]string {
-	pkgs := make(map[string]map[string]string)
+type goPackage struct {
+	Dir   string
+	Name  string
+	Tests bool
+}
+
+func fileGoPackage(f *fileAnalysis) goPackage {
+	return goPackage{Dir: path.Dir(f.path), Name: f.a.Package, Tests: strings.HasSuffix(f.path, "_test.go")}
+}
+
+func indexGoPackages(files []fileAnalysis) map[goPackage]map[string]string {
+	pkgs := make(map[goPackage]map[string]string)
 	for i := range files {
 		f := &files[i]
 		if f.a == nil || f.a.Lang != "go" {
 			continue
 		}
-		dir := path.Dir(f.path)
-		if pkgs[dir] == nil {
-			pkgs[dir] = make(map[string]string)
+		key := fileGoPackage(f)
+		keys := []goPackage{key}
+		if !key.Tests {
+			key.Tests = true
+			keys = append(keys, key)
 		}
-		for _, d := range f.a.Decls {
-			if d.Parent == -1 {
-				pkgs[dir][d.Name] = d.symID(f.path)
+		for _, key := range keys {
+			if pkgs[key] == nil {
+				pkgs[key] = make(map[string]string)
+			}
+			for _, d := range f.a.Decls {
+				if d.Parent == -1 {
+					addUniqueSymbol(pkgs[key], d.Name, d.symID(f.path))
+				}
 			}
 		}
 	}
 	return pkgs
+}
+
+func addUniqueSymbol(symbols map[string]string, name, id string) {
+	if previous, exists := symbols[name]; exists && previous != id {
+		symbols[name] = ""
+	} else if !exists {
+		symbols[name] = id
+	}
 }
 
 func readGoModule(root string) string {
@@ -191,12 +214,17 @@ func (r *resolver) goModuleFiles(module string) []string {
 	}
 	dir := strings.TrimPrefix(rel, "/")
 	var files []string
+	packageName := ""
 	for _, p := range r.paths {
 		f := r.files[p]
-		if f.a == nil || f.a.Lang != "go" {
+		if f.a == nil || f.a.Lang != "go" || strings.HasSuffix(p, "_test.go") {
 			continue
 		}
 		if path.Dir(p) == dir || (dir == "" && path.Dir(p) == ".") {
+			if packageName != "" && f.a.Package != packageName {
+				return nil
+			}
+			packageName = f.a.Package
 			files = append(files, p)
 		}
 	}
@@ -259,7 +287,11 @@ func (r *resolver) moduleExports(mid string) map[string]string {
 			if d.Parent != -1 || !d.Exported {
 				continue
 			}
-			m[d.Name] = d.symID(p)
+			if f.a.Lang == "go" {
+				addUniqueSymbol(m, d.Name, d.symID(p))
+			} else {
+				m[d.Name] = d.symID(p)
+			}
 		}
 	}
 	r.exports[mid] = m
@@ -278,7 +310,7 @@ func (r *resolver) fileScope(f *fileAnalysis) scope {
 		sc.bindings[b.In] = append(sc.bindings[b.In], b)
 	}
 	if f.a.Lang == "go" {
-		maps.Copy(sc.syms, r.goPkgs[path.Dir(f.path)])
+		maps.Copy(sc.syms, r.goPkgs[fileGoPackage(f)])
 	}
 	for i, d := range f.a.Decls {
 		sc.children[d.Parent] = append(sc.children[d.Parent], i)
@@ -307,7 +339,7 @@ func (r *resolver) fileScope(f *fileAnalysis) scope {
 				if local == "" {
 					local = n.Name
 				}
-				if sid, ok := exp[n.Name]; ok {
+				if sid := exp[n.Name]; sid != "" {
 					sc.syms[local] = sid
 				} else {
 					sc.syms[local] = ExtID(f.a.Lang, modName(mid), n.Name)
@@ -382,7 +414,7 @@ func (r *resolver) resolveCall(f *fileAnalysis, sc scope, c Call) (string, strin
 		} else if shadowed {
 			return ExtID(f.a.Lang, "", c.Name), ConfInferred
 		}
-		if sid, ok := sc.syms[c.Name]; ok {
+		if sid := sc.syms[c.Name]; sid != "" {
 			return sid, ConfInferred
 		}
 		return ExtID(f.a.Lang, "", c.Name), ConfInferred
@@ -391,7 +423,7 @@ func (r *resolver) resolveCall(f *fileAnalysis, sc scope, c Call) (string, strin
 		return ExtID(f.a.Lang, c.Receiver, c.Name), ConfInferred
 	}
 	if mid, ok := sc.mods[c.Receiver]; ok {
-		if sid, ok := r.moduleExports(mid)[c.Name]; ok {
+		if sid := r.moduleExports(mid)[c.Name]; sid != "" {
 			return sid, ConfInferred
 		}
 		return ExtID(f.a.Lang, modName(mid), c.Name), ConfInferred
