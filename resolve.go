@@ -16,9 +16,10 @@ type resolver struct {
 	paths []string
 	files map[string]*fileAnalysis
 
-	goModule string
-	goPkgs   map[goPackage]map[string]string
-	pyRoots  []string
+	goModule   string
+	goPkgs     map[goPackage]map[string]string
+	pyRoots    []string
+	rubyScopes map[string]rubyScope
 
 	// modules maps a mod: ID to the repository-relative files that
 	// implement it, once resolved.
@@ -41,11 +42,12 @@ type scope struct {
 
 func newResolver(root string, files []fileAnalysis, hints ResolutionHints) *resolver {
 	r := &resolver{
-		root:    root,
-		hints:   hints,
-		files:   make(map[string]*fileAnalysis, len(files)),
-		modules: make(map[string][]string),
-		exports: make(map[string]map[string]string),
+		root:       root,
+		hints:      hints,
+		files:      make(map[string]*fileAnalysis, len(files)),
+		modules:    make(map[string][]string),
+		exports:    make(map[string]map[string]string),
+		rubyScopes: make(map[string]rubyScope),
 	}
 	for i := range files {
 		r.paths = append(r.paths, files[i].path)
@@ -451,24 +453,6 @@ func (r *resolver) resolveCall(f *fileAnalysis, sc scope, c Call) (string, strin
 	return ExtID(f.a.Lang, c.Receiver, c.Name), ConfInferred
 }
 
-func (r *resolver) resolveRubyCall(f *fileAnalysis, c Call) (string, string) {
-	switch c.ReceiverKind {
-	case ReceiverBare, ReceiverSelf:
-		owner, singleton := rubyCallContext(f.a.Decls, c.In)
-		if sid := rubyMethod(f, owner, c.Name, singleton); sid != "" {
-			return sid, ConfExtracted
-		}
-	case ReceiverConstant:
-		receiver := strings.TrimPrefix(c.Receiver, "::")
-		if sid, local := rubySingletonMethod(f, receiver, c.Name); sid != "" {
-			return sid, ConfExtracted
-		} else if local {
-			return ExtID("ruby", "local:"+receiver, c.Name), ConfInferred
-		}
-	}
-	return ExtID("ruby", c.Receiver, c.Name), ConfInferred
-}
-
 func rubyCallContext(decls []decl, in int) (owner int, singleton bool) {
 	owner = -1
 	if in < 0 {
@@ -476,7 +460,7 @@ func rubyCallContext(decls []decl, in int) (owner int, singleton bool) {
 	}
 	switch decls[in].Kind {
 	case KindFunc:
-		singleton = decls[in].Singleton
+		singleton = decls[in].Singleton || decls[in].ModuleFunction
 	case KindClass, KindType:
 		singleton = true
 	}
@@ -486,42 +470,6 @@ func rubyCallContext(decls []decl, in int) (owner int, singleton bool) {
 		}
 	}
 	return owner, singleton
-}
-
-func rubyMethod(f *fileAnalysis, owner int, name string, singleton bool) string {
-	for i, d := range f.a.Decls {
-		if d.Parent == owner && d.Kind == KindFunc && d.Name == name && d.Singleton == singleton {
-			return f.a.Decls[i].symID(f.path)
-		}
-	}
-	return ""
-}
-
-func rubySingletonMethod(f *fileAnalysis, receiver, name string) (target string, local bool) {
-	for i, d := range f.a.Decls {
-		if d.Kind == KindFunc && d.Singleton && d.Owner == receiver && d.Name == name {
-			if target != "" {
-				return "", true
-			}
-			target = d.symID(f.path)
-			local = true
-			continue
-		}
-		if d.Kind != KindClass && d.Kind != KindType {
-			continue
-		}
-		if d.Name != receiver && rubyQualified(f.a.Decls, i) != receiver {
-			continue
-		}
-		local = true
-		if sid := rubyMethod(f, i, name, true); sid != "" {
-			if target != "" {
-				return "", true
-			}
-			target = sid
-		}
-	}
-	return target, local
 }
 
 // lexical walks outward from the enclosing declaration, returning the

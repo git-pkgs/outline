@@ -10,19 +10,20 @@ import (
 // retains the full definition span and nesting so callers can compute node
 // identities and containment before the tree is released.
 type decl struct {
-	Name      string
-	Kind      string
-	Line      int
-	Exported  bool
-	NameAt    uint32
-	Start     uint32
-	End       uint32
-	SigEnd    uint32
-	Parent    int
-	Params    []string
-	Singleton bool
-	Method    bool
-	Owner     string
+	Name           string
+	Kind           string
+	Line           int
+	Exported       bool
+	NameAt         uint32
+	Start          uint32
+	End            uint32
+	SigEnd         uint32
+	Parent         int
+	Params         []string
+	Singleton      bool
+	Method         bool
+	ModuleFunction bool
+	Owner          string
 }
 
 func (d decl) symID(path string) string {
@@ -40,6 +41,7 @@ type analysis struct {
 	SyntaxErrors bool
 	PyImports    []pythonImport
 	PyExports    *pythonExports
+	RubyLoads    []Import
 }
 
 // analyse parses src once and returns every fact the graph builder needs
@@ -72,6 +74,10 @@ func analyse(src []byte, filename string) (*analysis, bool) {
 	if l.name == "python" {
 		a.PyImports = pythonImportFacts(src, l, root, a.Decls)
 		a.PyExports = pythonExportFacts(src, l, root)
+	}
+	if l.name == "ruby" {
+		a.RubyLoads = rubyLoadFacts(src, l, root)
+		rubyModuleFunctions(a, src, l, root)
 	}
 	return a, true
 }

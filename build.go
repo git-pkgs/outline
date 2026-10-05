@@ -242,7 +242,7 @@ func rubyQualified(decls []decl, i int) string {
 			return d.Name
 		}
 		separator := "#"
-		if d.Singleton {
+		if d.Singleton || d.ModuleFunction {
 			separator = "."
 		}
 		return strings.Join(owner, "::") + separator + d.Name
