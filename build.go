@@ -85,7 +85,7 @@ func Build(root string, opts Options) (*Graph, error) {
 		g.Warnings = append(g.Warnings, fmt.Sprintf("file limit %d reached; graph is partial", opts.MaxFiles))
 	}
 
-	emitFileNodes(g, files)
+	emitFileNodes(g, files, r.goMethodOwners())
 	r.emitModules(g)
 	r.emitCalls(g)
 
@@ -158,7 +158,7 @@ func shebangCandidate(path string) bool {
 	return !strings.Contains(base, ".")
 }
 
-func emitFileNodes(g *Graph, files []fileAnalysis) {
+func emitFileNodes(g *Graph, files []fileAnalysis, methodOwners map[string]string) {
 	for _, f := range files {
 		fid := FileID(f.path)
 		g.Nodes = append(g.Nodes, Node{ID: fid, Kind: KindFile, Name: f.path, File: f.path})
@@ -188,11 +188,15 @@ func emitFileNodes(g *Graph, files []fileAnalysis) {
 				Sig:       signature(f.src, d),
 			})
 			from := fid
+			conf := ConfExtracted
 			if d.Parent >= 0 {
 				from = f.a.Decls[d.Parent].symID(f.path)
+			} else if owner := methodOwners[sid]; owner != "" {
+				from = owner
+				conf = ConfInferred
 			}
 			g.Edges = append(g.Edges, Edge{
-				From: from, To: sid, Rel: RelContains, Conf: ConfExtracted,
+				From: from, To: sid, Rel: RelContains, Conf: conf,
 				File: f.path, Line: d.Line,
 			})
 		}
@@ -204,8 +208,14 @@ func qualified(lang string, decls []decl, i int) string {
 		return rubyQualified(decls, i)
 	}
 	parts := []string{decls[i].Name}
+	if decls[i].Method && decls[i].Owner != "" {
+		parts = append(parts, decls[i].Owner)
+	}
 	for p := decls[i].Parent; p >= 0; p = decls[p].Parent {
 		parts = append(parts, decls[p].Name)
+		if decls[p].Method && decls[p].Owner != "" {
+			parts = append(parts, decls[p].Owner)
+		}
 	}
 	for l, r := 0, len(parts)-1; l < r; l, r = l+1, r-1 {
 		parts[l], parts[r] = parts[r], parts[l]

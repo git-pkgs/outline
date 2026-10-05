@@ -21,6 +21,7 @@ type decl struct {
 	Parent    int
 	Params    []string
 	Singleton bool
+	Method    bool
 	Owner     string
 }
 
@@ -126,7 +127,11 @@ func declsFromMatch(src []byte, l *lang, m ts.QueryMatch) []decl {
 	}
 	params := extractParams(src, l, definition)
 	singleton := l.name == "ruby" && definition.Type(l.language) == "singleton_method"
+	method := l.name == "go" && definition.Type(l.language) == "method_declaration"
 	owner := ""
+	if method {
+		owner = goReceiverOwner(src, l, definition)
+	}
 	if singleton {
 		if object := definition.ChildByFieldName("object", l.language); object != nil {
 			owner = object.Text(src)
@@ -153,6 +158,7 @@ func declsFromMatch(src []byte, l *lang, m ts.QueryMatch) []decl {
 			Parent:    -1,
 			Params:    params,
 			Singleton: singleton,
+			Method:    method,
 			Owner:     owner,
 		})
 	}

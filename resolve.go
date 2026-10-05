@@ -85,7 +85,7 @@ func indexGoPackages(files []fileAnalysis) map[goPackage]map[string]string {
 				pkgs[key] = make(map[string]string)
 			}
 			for _, d := range f.a.Decls {
-				if d.Parent == -1 {
+				if d.Parent == -1 && !d.Method {
 					addUniqueSymbol(pkgs[key], d.Name, d.symID(f.path))
 				}
 			}
@@ -284,7 +284,7 @@ func (r *resolver) moduleExports(mid string) map[string]string {
 			continue
 		}
 		for _, d := range f.a.Decls {
-			if d.Parent != -1 || !d.Exported {
+			if d.Parent != -1 || !d.Exported || d.Method {
 				continue
 			}
 			if f.a.Lang == "go" {
@@ -312,12 +312,7 @@ func (r *resolver) fileScope(f *fileAnalysis) scope {
 	if f.a.Lang == "go" {
 		maps.Copy(sc.syms, r.goPkgs[fileGoPackage(f)])
 	}
-	for i, d := range f.a.Decls {
-		sc.children[d.Parent] = append(sc.children[d.Parent], i)
-		if d.Parent == -1 {
-			sc.syms[d.Name] = d.symID(f.path)
-		}
-	}
+	sc.addDeclarations(f)
 	for _, imp := range f.a.Imports {
 		mid := r.moduleID(f, imp)
 		switch imp.Kind {
@@ -350,6 +345,18 @@ func (r *resolver) fileScope(f *fileAnalysis) scope {
 		}
 	}
 	return sc
+}
+
+func (sc *scope) addDeclarations(f *fileAnalysis) {
+	for i, d := range f.a.Decls {
+		if d.Method {
+			continue
+		}
+		sc.children[d.Parent] = append(sc.children[d.Parent], i)
+		if d.Parent == -1 {
+			sc.syms[d.Name] = d.symID(f.path)
+		}
+	}
 }
 
 func defaultAlias(lang, module string) string {
