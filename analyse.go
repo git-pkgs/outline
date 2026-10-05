@@ -30,12 +30,13 @@ func (d decl) symID(path string) string {
 
 // analysis is the per-file fact set that graph resolution consumes.
 type analysis struct {
-	Lang     string
-	Package  string
-	Decls    []decl
-	Imports  []Import
-	Calls    []Call
-	Bindings []binding
+	Lang         string
+	Package      string
+	Decls        []decl
+	Imports      []Import
+	Calls        []Call
+	Bindings     []binding
+	SyntaxErrors bool
 }
 
 // analyse parses src once and returns every fact the graph builder needs
@@ -51,7 +52,7 @@ func analyse(src []byte, filename string) (*analysis, bool) {
 	root := tree.RootNode()
 	matches := l.query.Execute(tree)
 
-	a := &analysis{Lang: l.name}
+	a := &analysis{Lang: l.name, SyntaxErrors: root.HasError()}
 	if l.name == "go" {
 		for i := range root.NamedChildCount() {
 			node := root.NamedChild(i)

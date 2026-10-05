@@ -169,6 +169,10 @@ func emitFileNodes(g *Graph, files []fileAnalysis) {
 			}
 			continue
 		}
+		if f.a.SyntaxErrors {
+			g.Warnings = append(g.Warnings, f.path+": syntax-errors")
+			g.Complete = false
+		}
 		for i, d := range f.a.Decls {
 			sid := d.symID(f.path)
 			g.Nodes = append(g.Nodes, Node{
