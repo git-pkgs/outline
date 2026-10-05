@@ -200,7 +200,7 @@ func rubyScopeKey(files []*fileAnalysis) string {
 
 func rubyIndexMethods(sc rubyScope, f *fileAnalysis) {
 	for i, d := range f.a.Decls {
-		if d.Kind != KindFunc {
+		if d.Kind != KindFunc || d.Anonymous {
 			continue
 		}
 		owner, _ := rubyCallContext(f.a.Decls, i)
@@ -279,8 +279,8 @@ func (r *resolver) resolveRubyCall(f *fileAnalysis, c Call) (string, string) {
 		if at >= 0 {
 			owner = rubyQualified(f.a.Decls, at)
 		}
-		if c.In >= 0 {
-			d := f.a.Decls[c.In]
+		if in := rubyContextIn(f.a.Decls, c.In); in >= 0 {
+			d := f.a.Decls[in]
 			if d.Singleton && d.Owner != "" && d.Owner != "self" {
 				owner, _ = rubyReceiverOwner(sc, f.a.Decls, d.Parent, d.Owner)
 			}
