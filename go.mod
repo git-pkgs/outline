@@ -6,7 +6,7 @@ toolchain go1.26.7
 
 require (
 	github.com/git-pkgs/magic v0.4.0
-	github.com/odvcencio/gotreesitter v0.53.0
+	github.com/odvcencio/gotreesitter v0.55.1
 )
 
 require github.com/git-pkgs/gitignore v1.3.0
