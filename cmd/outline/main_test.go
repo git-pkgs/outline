@@ -70,6 +70,32 @@ func TestCLIGoAffected(t *testing.T) {
 	}
 }
 
+func TestCLIReadmeAffectedExample(t *testing.T) {
+	repo := filepath.Join("..", "..")
+	readme, err := os.ReadFile(filepath.Join(repo, "README.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	command := "affected -inferred -dir testdata/cli-go ext:go:os/exec:Command"
+	_, after, found := strings.Cut(string(readme), "$ outline "+command+"\n")
+	if !found {
+		t.Fatal("README affected example missing")
+	}
+	want, _, found := strings.Cut(after, "```")
+	if !found {
+		t.Fatal("README example fence missing")
+	}
+	cmd := exec.Command(binPath, strings.Fields(command)...)
+	cmd.Dir = repo
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("README command failed: %v\n%s", err, out)
+	}
+	if string(out) != want {
+		t.Fatalf("README example differs from CLI output:\n%s\nwant:\n%s", out, want)
+	}
+}
+
 func TestCLIPythonAffected(t *testing.T) {
 	dir := testdata("cli-py")
 
