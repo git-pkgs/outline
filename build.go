@@ -73,11 +73,12 @@ func Build(root string, opts Options) (*Graph, error) {
 	sort.Strings(paths)
 
 	files := analyseAll(abs, paths, opts)
+	r := newResolver(abs, files, opts.Resolution)
 
 	g := &Graph{
 		SchemaVersion: SchemaVersion,
 		ToolVersion:   ToolVersion,
-		SourceDigest:  sourceDigest(files),
+		SourceDigest:  sourceDigest(files, r.goModule, r.pyRoots),
 		Complete:      !truncated,
 	}
 	if truncated {
@@ -85,7 +86,6 @@ func Build(root string, opts Options) (*Graph, error) {
 	}
 
 	emitFileNodes(g, files)
-	r := newResolver(abs, files, opts.Resolution)
 	r.emitModules(g)
 	r.emitCalls(g)
 
@@ -280,13 +280,19 @@ func sanitise(s string) string {
 	return b.String()
 }
 
-func sourceDigest(files []fileAnalysis) string {
+func sourceDigest(files []fileAnalysis, goModule string, sourceRoots []string) string {
 	h := sha256.New()
 	for _, f := range files {
 		h.Write([]byte(f.path))
 		h.Write([]byte{0})
 		fh := sha256.Sum256(f.src)
 		h.Write(fh[:])
+	}
+	moduleHash := sha256.Sum256([]byte(goModule))
+	h.Write(moduleHash[:])
+	for _, root := range sourceRoots {
+		rootHash := sha256.Sum256([]byte(root))
+		h.Write(rootHash[:])
 	}
 	return hex.EncodeToString(h.Sum(nil))
 }
