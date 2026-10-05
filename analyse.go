@@ -38,6 +38,8 @@ type analysis struct {
 	Calls        []Call
 	Bindings     []binding
 	SyntaxErrors bool
+	PyImports    []pythonImport
+	PyExports    *pythonExports
 }
 
 // analyse parses src once and returns every fact the graph builder needs
@@ -67,6 +69,10 @@ func analyse(src []byte, filename string) (*analysis, bool) {
 	a.Imports, _ = importsFor(src, l, root)
 	a.Calls, _ = callsFor(src, l, root, a.Decls)
 	a.Bindings = bindingsFor(src, l, root, a.Decls)
+	if l.name == "python" {
+		a.PyImports = pythonImportFacts(src, l, root, a.Decls)
+		a.PyExports = pythonExportFacts(src, l, root)
+	}
 	return a, true
 }
 

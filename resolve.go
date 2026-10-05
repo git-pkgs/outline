@@ -165,6 +165,7 @@ func (r *resolver) emitModules(g *Graph) {
 			})
 		}
 	}
+	r.emitPythonSubmodules(g, seen)
 	for mid, paths := range r.modules {
 		for _, p := range paths {
 			g.Edges = append(g.Edges, Edge{
@@ -238,8 +239,8 @@ func (r *resolver) pyModuleFiles(module, from string) []string {
 	rel := strings.ReplaceAll(module, ".", "/")
 	for _, root := range r.pyRoots {
 		for _, cand := range []string{
-			path.Join(root, rel+".py"),
 			path.Join(root, rel, "__init__.py"),
+			path.Join(root, rel+".py"),
 		} {
 			if _, ok := r.files[cand]; ok {
 				return []string{cand}
@@ -262,8 +263,14 @@ func (r *resolver) pyRelative(module, from string) []string {
 	base := dir
 	if rest != "" {
 		base = path.Join(dir, rest)
+	} else {
+		candidate := path.Join(base, "__init__.py")
+		if _, ok := r.files[candidate]; ok {
+			return []string{candidate}
+		}
+		return nil
 	}
-	for _, cand := range []string{base + ".py", path.Join(base, "__init__.py")} {
+	for _, cand := range []string{path.Join(base, "__init__.py"), base + ".py"} {
 		if _, ok := r.files[cand]; ok {
 			return []string{cand}
 		}
@@ -313,6 +320,9 @@ func (r *resolver) fileScope(f *fileAnalysis) scope {
 		maps.Copy(sc.syms, r.goPkgs[fileGoPackage(f)])
 	}
 	sc.addDeclarations(f)
+	if f.a.Lang == "python" {
+		return sc
+	}
 	for _, imp := range f.a.Imports {
 		mid := r.moduleID(f, imp)
 		switch imp.Kind {
@@ -414,6 +424,9 @@ func (r *resolver) emitCalls(g *Graph) {
 func (r *resolver) resolveCall(f *fileAnalysis, sc scope, c Call) (string, string) {
 	if f.a.Lang == "ruby" {
 		return r.resolveRubyCall(f, c)
+	}
+	if f.a.Lang == "python" {
+		return r.resolvePythonCall(f, sc, c)
 	}
 	if c.Receiver == "" {
 		if sid, shadowed := lexical(f, sc, c.In, c.Name, c.Start); sid != "" {
@@ -527,15 +540,8 @@ func lexical(f *fileAnalysis, sc scope, in int, name string, pos uint32) (id str
 				return "", true
 			}
 		}
-		if at < 0 || at == in || decls[at].Kind != KindClass {
-			for _, ci := range sc.children[at] {
-				if f.a.Lang == "go" && at >= 0 && decls[ci].Kind != KindFunc {
-					continue
-				}
-				if decls[ci].Name == name {
-					return decls[ci].symID(f.path), false
-				}
-			}
+		if sid := lexicalDeclaration(f, sc, in, at, name); sid != "" {
+			return sid, false
 		}
 		if at < 0 {
 			return "", false
@@ -545,6 +551,24 @@ func lexical(f *fileAnalysis, sc scope, in int, name string, pos uint32) (id str
 		}
 		at = decls[at].Parent
 	}
+}
+
+func lexicalDeclaration(f *fileAnalysis, sc scope, in, at int, name string) string {
+	if at < 0 && f.a.Lang == "python" {
+		return ""
+	}
+	if at >= 0 && at != in && f.a.Decls[at].Kind == KindClass {
+		return ""
+	}
+	for _, ci := range sc.children[at] {
+		if f.a.Lang == "go" && at >= 0 && f.a.Decls[ci].Kind != KindFunc {
+			continue
+		}
+		if f.a.Decls[ci].Name == name {
+			return f.a.Decls[ci].symID(f.path)
+		}
+	}
+	return ""
 }
 
 func goVersionSuffix(s string) bool {
