@@ -24,7 +24,7 @@ func rubyLoadFacts(src []byte, l *lang, root *ts.Node) []Import {
 	var loads []Import
 	walkNamed(root, func(node *ts.Node) {
 		imp, ok := rubyImport(src, l.language, node)
-		if !ok || !rubyImmediateLoad(node, l.language) {
+		if !ok || !rubyImmediateStatement(node, l.language) {
 			return
 		}
 		loads = append(loads, imp)
@@ -32,7 +32,7 @@ func rubyLoadFacts(src []byte, l *lang, root *ts.Node) []Import {
 	return loads
 }
 
-func rubyImmediateLoad(node *ts.Node, language *ts.Language) bool {
+func rubyImmediateStatement(node *ts.Node, language *ts.Language) bool {
 	for parent := node.Parent(); parent != nil; parent = parent.Parent() {
 		switch parent.Type(language) {
 		case "program", "body_statement", "module", "class", "singleton_class":
@@ -49,29 +49,49 @@ type rubyMode struct {
 	Enabled bool
 }
 
-func rubyModeFacts(a *analysis, src []byte, l *lang, root *ts.Node) []rubyMode {
+func rubyModeFacts(a *analysis, src []byte, l *lang, root *ts.Node, immediate map[uint32]bool) []rubyMode {
 	var modes []rubyMode
-	add := func(name string, start uint32, in int) {
+	add := func(name string, start uint32, in int, unconditional bool) {
 		if name == rubyModuleFunction || name == "public" || name == "private" || name == "protected" {
-			modes = append(modes, rubyMode{in, start, name == rubyModuleFunction})
+			modes = append(modes, rubyMode{in, start, unconditional && name == rubyModuleFunction})
 		}
 	}
 	for _, c := range a.Calls {
 		if len(c.Arguments) == 0 && (c.ReceiverKind == ReceiverBare || c.ReceiverKind == ReceiverSelf) {
-			add(c.Name, c.Start, c.In)
+			add(c.Name, c.Start, c.In, immediate[c.Start])
 		}
 	}
 	walkNamed(root, func(node *ts.Node) {
-		if node.Type(l.language) == "identifier" && node.Parent() != nil && node.Parent().Type(l.language) == "body_statement" {
-			add(node.Text(src), node.StartByte(), enclosing(a.Decls, node.StartByte()))
+		if node.Type(l.language) == "identifier" && rubyModeStatement(node, l.language) {
+			add(node.Text(src), node.StartByte(), enclosing(a.Decls, node.StartByte()), rubyImmediateStatement(node, l.language))
 		}
 	})
 	sort.Slice(modes, func(i, j int) bool { return modes[i].Start < modes[j].Start })
 	return modes
 }
 
+func rubyModeStatement(node *ts.Node, language *ts.Language) bool {
+	parent := node.Parent()
+	if parent == nil {
+		return false
+	}
+	switch parent.Type(language) {
+	case "body_statement", "then", "else", "do":
+		return true
+	case "if_modifier", "unless_modifier", "while_modifier", "until_modifier", "rescue_modifier":
+		return parent.NamedChild(0).StartByte() == node.StartByte()
+	}
+	return false
+}
+
 func rubyModuleFunctions(a *analysis, src []byte, l *lang, root *ts.Node) {
-	modes := rubyModeFacts(a, src, l, root)
+	immediate := make(map[uint32]bool)
+	walkNamed(root, func(node *ts.Node) {
+		if node.Type(l.language) == "call" && rubyImmediateStatement(node, l.language) {
+			immediate[node.StartByte()] = true
+		}
+	})
+	modes := rubyModeFacts(a, src, l, root, immediate)
 	for i := range a.Decls {
 		d := &a.Decls[i]
 		if d.Kind != KindFunc || d.Singleton || d.Parent < 0 || a.Decls[d.Parent].Kind != KindType {
@@ -86,7 +106,7 @@ func rubyModuleFunctions(a *analysis, src []byte, l *lang, root *ts.Node) {
 				mode = event.Enabled
 			}
 		}
-		d.ModuleFunction = mode || rubyNamedModuleCopy(a, *d)
+		d.ModuleFunction = mode || rubyNamedModuleCopy(a, *d, immediate)
 	}
 }
 
@@ -100,9 +120,9 @@ func rubyCustomModuleFunction(a *analysis, owner int) bool {
 	return false
 }
 
-func rubyNamedModuleCopy(a *analysis, d decl) bool {
+func rubyNamedModuleCopy(a *analysis, d decl, immediate map[uint32]bool) bool {
 	for _, c := range a.Calls {
-		if c.Name != rubyModuleFunction || c.In != d.Parent || d.End > c.Start {
+		if c.Name != rubyModuleFunction || c.In != d.Parent || d.End > c.Start || !immediate[c.Start] {
 			continue
 		}
 		if c.ReceiverKind != ReceiverBare && c.ReceiverKind != ReceiverSelf {

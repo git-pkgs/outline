@@ -2,11 +2,14 @@ package outline
 
 import ts "github.com/odvcencio/gotreesitter"
 
+const forStatement = "for_statement"
+
 type binding struct {
 	Name  string
 	In    int
 	Start uint32
 	End   uint32
+	At    uint32
 	Decl  int
 }
 
@@ -22,9 +25,13 @@ func bindingsFor(src []byte, l *lang, root *ts.Node, decls []decl) []binding {
 		}
 		in := enclosing(decls, scope.StartByte())
 		target := bindingDeclaration(l, node, decls)
+		at := node.EndByte()
+		if l.name == "python" && node.Type(l.language) == forStatement {
+			at = node.StartByte()
+		}
 		for _, name := range names {
 			if l.name != "go" || name != "_" {
-				out = append(out, binding{Name: name, In: in, Start: start, End: scope.EndByte(), Decl: target})
+				out = append(out, binding{Name: name, In: in, Start: start, End: scope.EndByte(), At: at, Decl: target})
 			}
 		}
 	})
@@ -40,7 +47,7 @@ func bindingNode(src []byte, l *lang, node *ts.Node) ([]string, *ts.Node, uint32
 		}
 	case "python":
 		switch node.Type(l.language) {
-		case "assignment", "augmented_assignment", "for_statement":
+		case "assignment", "augmented_assignment", forStatement:
 			names := bindingNames(src, l.language, node.ChildByFieldName("left", l.language))
 			if len(names) > 0 {
 				if scope := pythonBindingScope(node, l.language); scope != nil {
@@ -107,7 +114,7 @@ func goBindingNames(src []byte, language *ts.Language, node *ts.Node) []string {
 func goBindingScope(node *ts.Node, language *ts.Language) *ts.Node {
 	for parent := node.Parent(); parent != nil; parent = parent.Parent() {
 		switch parent.Type(language) {
-		case "block", "if_statement", "for_statement", "expression_switch_statement", "type_switch_statement", "communication_case", "expression_case", "type_case":
+		case "block", "if_statement", forStatement, "expression_switch_statement", "type_switch_statement", "communication_case", "expression_case", "type_case":
 			return parent
 		}
 	}

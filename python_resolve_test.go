@@ -2,6 +2,128 @@ package outline
 
 import "testing"
 
+func TestBuildPythonInnerImports(t *testing.T) {
+	for _, c := range []struct{ name, outer, body string }{
+		{"assignment", "def outer():\n    run = lambda: None\n", "        from helper import run\n        run()\n"},
+		{"parameter", "def outer(run):\n", "        from helper import run\n        run()\n"},
+		{"definition", "def outer():\n    def run():\n        pass\n", "        from helper import run\n        run()\n"},
+		{"module", "def outer(helper):\n", "        import helper\n        helper.run()\n"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			root := t.TempDir()
+			writeFiles(t, root, map[string]string{
+				"app.py":    c.outer + "    def entry():\n" + c.body,
+				"helper.py": "def run():\n    pass\n",
+			})
+			g, err := Build(root, Options{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			entry := nodeByQualified(g, "outer.entry")
+			if entry == nil {
+				t.Fatal("missing entry function")
+			}
+			calls := g.Callees(entry.ID)
+			if len(calls) != 1 || g.Node(calls[0].To).File != "helper.py" {
+				t.Fatalf("inner import lost to an outer binding: %v", calls)
+			}
+		})
+	}
+}
+
+func TestBuildPythonLocalRebinding(t *testing.T) {
+	for _, c := range []struct{ name, body, file, qualified string }{
+		{"definition after assignment", "    run = None\n    def run():\n        pass\n    run()\n", "app.py", "entry.run"},
+		{"assignment after definition", "    def run():\n        pass\n    run = lambda: None\n    run()\n", "", "run"},
+		{"call before reassignment", "    def run():\n        pass\n    run()\n    run = None\n", "app.py", "entry.run"},
+		{"call before definition", "    run()\n    def run():\n        pass\n", "", "run"},
+		{"conditional definition", "    run = None\n    if enabled:\n        def run():\n            pass\n    run()\n", "", "run"},
+		{"import after assignment", "    run = None\n    from helper import run\n    run()\n", "helper.py", "run"},
+		{"assignment after import", "    from helper import run\n    run = lambda: None\n    run()\n", "", "run"},
+		{"conditional import", "    if enabled:\n        from helper import run\n    run()\n", "", "run"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			root := t.TempDir()
+			writeFiles(t, root, map[string]string{
+				"app.py":    "def run():\n    pass\ndef entry():\n" + c.body,
+				"helper.py": "def run():\n    pass\n",
+			})
+			g, err := Build(root, Options{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			entry := nodeByQualified(g, "entry")
+			if entry == nil {
+				t.Fatal("missing entry function")
+			}
+			calls := g.Callees(entry.ID)
+			if len(calls) != 1 {
+				t.Fatalf("calls=%v, want one call", calls)
+			}
+			target := g.Node(calls[0].To)
+			if target.File != c.file || target.Qualified != c.qualified {
+				t.Fatalf("target=%+v, want %s in %s", target, c.qualified, c.file)
+			}
+		})
+	}
+}
+
+func TestBuildPythonClosureDefinition(t *testing.T) {
+	root := t.TempDir()
+	writeFiles(t, root, map[string]string{"app.py": `def outer():
+    def entry():
+        run()
+    def run():
+        run()
+    entry()
+`})
+	g, err := Build(root, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	run := nodeByQualified(g, "outer.run")
+	entry := nodeByQualified(g, "outer.entry")
+	if run == nil || entry == nil {
+		t.Fatal("missing nested functions")
+	}
+	for _, caller := range []string{entry.ID, run.ID} {
+		if calls := g.Callees(caller); len(calls) != 1 || calls[0].To != run.ID {
+			t.Fatalf("closure target lost to source order: %v", calls)
+		}
+	}
+}
+
+func TestBuildPythonLocalModuleImports(t *testing.T) {
+	root := t.TempDir()
+	writeFiles(t, root, map[string]string{
+		"app.py":          "def entry():\n    import pkg.one\n    import pkg.two\n    pkg.one.run()\n    pkg.two.run()\n",
+		"pkg/__init__.py": "",
+		"pkg/one.py":      "def run():\n    pass\n",
+		"pkg/two.py":      "def run():\n    pass\n",
+	})
+	g, err := Build(root, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry := nodeByQualified(g, "entry")
+	if entry == nil {
+		t.Fatal("missing entry function")
+	}
+	calls := g.Callees(entry.ID)
+	if len(calls) != 2 {
+		t.Fatalf("calls=%v, want two calls", calls)
+	}
+	for _, call := range calls {
+		want := "pkg/one.py"
+		if call.Call.Receiver == "pkg.two" {
+			want = "pkg/two.py"
+		}
+		if target := g.Node(call.To); target.File != want {
+			t.Errorf("target=%+v, want file %s", target, want)
+		}
+	}
+}
+
 func TestBuildPythonPackageJoins(t *testing.T) {
 	root := t.TempDir()
 	writeFiles(t, root, map[string]string{

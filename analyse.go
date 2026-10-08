@@ -23,6 +23,7 @@ type decl struct {
 	Singleton      bool
 	Method         bool
 	ModuleFunction bool
+	Conditional    bool
 	Owner          string
 }
 
@@ -159,19 +160,20 @@ func declsFromMatch(src []byte, l *lang, m ts.QueryMatch) []decl {
 			continue
 		}
 		out = append(out, decl{
-			Name:      name,
-			Kind:      normalizeSymbolKind(l.name, kind, name, definition, src, l.language),
-			Line:      int(n.StartPoint().Row) + 1,
-			Exported:  exported || symbolExported(l.name, name, definition, src, l.language),
-			NameAt:    n.StartByte(),
-			Start:     start,
-			End:       end,
-			SigEnd:    sigEnd,
-			Parent:    -1,
-			Params:    params,
-			Singleton: singleton,
-			Method:    method,
-			Owner:     owner,
+			Name:        name,
+			Kind:        normalizeSymbolKind(l.name, kind, name, definition, src, l.language),
+			Line:        int(n.StartPoint().Row) + 1,
+			Exported:    exported || symbolExported(l.name, name, definition, src, l.language),
+			NameAt:      n.StartByte(),
+			Start:       start,
+			End:         end,
+			SigEnd:      sigEnd,
+			Parent:      -1,
+			Params:      params,
+			Singleton:   singleton,
+			Method:      method,
+			Owner:       owner,
+			Conditional: l.name == "python" && pythonConditional(definition, l.language),
 		})
 	}
 	return out

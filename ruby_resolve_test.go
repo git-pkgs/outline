@@ -2,6 +2,34 @@ package outline
 
 import "testing"
 
+func TestBuildRubyConditionalModuleFunctions(t *testing.T) {
+	for _, c := range []struct{ name, body string }{
+		{"named modifier", "  def run\n  end\n  module_function :run if false\n"},
+		{"named block", "  def run\n  end\n  if enabled\n    module_function :run\n  end\n"},
+		{"mode modifier", "  module_function if false\n  def run\n  end\n"},
+		{"mode block", "  if enabled\n    module_function\n  end\n  def run\n  end\n"},
+		{"conditional visibility", "  module_function\n  public if enabled\n  def run\n  end\n"},
+		{"conditional visibility block", "  module_function\n  if enabled\n    public\n  end\n  def run\n  end\n"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			root := t.TempDir()
+			writeFiles(t, root, map[string]string{"app.rb": "module M\n" + c.body + "end\ndef entry\n  M.run\nend\n"})
+			g, err := Build(root, Options{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			entry := nodeByQualified(g, "entry")
+			if entry == nil {
+				t.Fatal("missing entry method")
+			}
+			calls := g.Callees(entry.ID)
+			if len(calls) != 1 || calls[0].To != ExtID("ruby", "local:M", "run") {
+				t.Fatalf("conditional copy resolved to a source method: %v", calls)
+			}
+		})
+	}
+}
+
 func TestBuildRubyLoadedSingletons(t *testing.T) {
 	root := t.TempDir()
 	writeFiles(t, root, map[string]string{

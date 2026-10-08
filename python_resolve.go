@@ -15,6 +15,7 @@ type pythonImport struct {
 	In          int
 	End         uint32
 	BoundModule string
+	Conditional bool
 }
 
 type pythonTarget struct {
@@ -112,10 +113,24 @@ func pythonImportFacts(src []byte, l *lang, root *ts.Node, decls []decl) []pytho
 			}
 			facts = append(facts, pythonImport{
 				Import: imp, In: enclosing(decls, node.StartByte()), End: node.EndByte(), BoundModule: bound,
+				Conditional: pythonConditional(node, l.language),
 			})
 		}
 	})
 	return facts
+}
+
+func pythonConditional(node *ts.Node, language *ts.Language) bool {
+	for parent := node.Parent(); parent != nil; parent = parent.Parent() {
+		switch parent.Type(language) {
+		case "function_definition", "class_definition", "module":
+			return false
+		case "block", "decorated_definition":
+		default:
+			return true
+		}
+	}
+	return false
 }
 
 func (r *resolver) pyLookup(module, from, name string, seen map[pythonLookup]bool) pythonBinding {
@@ -273,25 +288,69 @@ func (r *resolver) pyMember(target pythonTarget, name string, seen map[pythonLoo
 	return pythonTarget{}
 }
 
-func (r *resolver) pyCallBinding(f *fileAnalysis, c Call, name string, seen map[pythonLookup]bool) pythonBinding {
+type pythonScopeBinding struct {
+	pythonBinding
+	at       uint32
+	deferred bool
+}
+
+func (b *pythonScopeBinding) assign(target pythonTarget, at, pos uint32, conditional bool) {
+	// Enclosing scopes can change before a nested body runs.
+	if b.deferred {
+		if conditional {
+			target = pythonTarget{}
+		}
+		b.add(target)
+		return
+	}
+	b.found = true
+	if at > pos || at < b.at {
+		return
+	}
+	if target.module != "" && target.module == b.target.module && target.from == b.target.from && !b.uncertain {
+		for _, loaded := range b.target.loaded {
+			if !slices.Contains(target.loaded, loaded) {
+				target.loaded = append(target.loaded, loaded)
+			}
+		}
+	}
+	b.at = at
+	b.target = target
+	b.uncertain = conditional
+}
+
+func (r *resolver) pyLocalBinding(f *fileAnalysis, sc scope, c Call, at int, name string, seen map[pythonLookup]bool) pythonBinding {
+	result := pythonScopeBinding{deferred: at != c.In}
+	result.found = slices.Contains(f.a.Decls[at].Params, name)
+	for _, b := range sc.bindings[at] {
+		if b.Name == name && b.Start <= c.Start && c.Start < b.End {
+			result.assign(pythonTarget{}, b.At, c.Start, false)
+		}
+	}
+	for _, ci := range sc.children[at] {
+		d := f.a.Decls[ci]
+		if d.Name != name {
+			continue
+		}
+		result.assign(pythonTarget{id: d.symID(f.path)}, d.End, c.Start, d.Conditional)
+	}
+	for _, imp := range f.a.PyImports {
+		if imp.In != at {
+			continue
+		}
+		if binding := r.pyImportName(f, imp, name, seen); binding.found {
+			result.assign(binding.resolved(), imp.End, c.Start, imp.Conditional)
+		}
+	}
+	return result.pythonBinding
+}
+
+func (r *resolver) pyCallBinding(f *fileAnalysis, sc scope, c Call, name string, seen map[pythonLookup]bool) pythonBinding {
 	for at := c.In; at >= 0; at = f.a.Decls[at].Parent {
 		if at != c.In && f.a.Decls[at].Kind == KindClass {
 			continue
 		}
-		var result pythonBinding
-		for _, imp := range f.a.PyImports {
-			if imp.In != at {
-				continue
-			}
-			if binding := r.pyImportName(f, imp, name, seen); binding.found {
-				if c.Start < imp.End {
-					result.add(pythonTarget{})
-				} else {
-					result.add(binding.resolved())
-				}
-			}
-		}
-		if result.found {
+		if result := r.pyLocalBinding(f, sc, c, at, name, seen); result.found {
 			return result
 		}
 	}
@@ -303,15 +362,11 @@ func (r *resolver) resolvePythonCall(f *fileAnalysis, sc scope, c Call) (string,
 	if c.Receiver != "" {
 		name, _, _ = strings.Cut(c.Receiver, ".")
 	}
-	sid, shadowed := lexical(f, sc, c.In, name, c.Start)
-	if sid != "" && c.Receiver == "" {
-		return sid, ConfExtracted
-	}
-	if sid != "" || shadowed || c.ReceiverKind == ReceiverExpression {
+	if c.ReceiverKind == ReceiverExpression {
 		return ExtID("python", c.Receiver, c.Name), ConfInferred
 	}
 	seen := make(map[pythonLookup]bool)
-	target := r.pyCallBinding(f, c, name, seen).resolved()
+	target := r.pyCallBinding(f, sc, c, name, seen).resolved()
 	if c.Receiver != "" {
 		for _, member := range strings.Split(c.Receiver, ".")[1:] {
 			target = r.pyMember(target, member, seen)
