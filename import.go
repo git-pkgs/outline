@@ -9,6 +9,9 @@ import (
 const (
 	importDeclaration        = "import_declaration"
 	importStatement          = "import_statement"
+	importFromStatement      = "import_from_statement"
+	futureImportStatement    = "future_import_statement"
+	aliasedImport            = "aliased_import"
 	javascriptCallExpression = "call_expression"
 )
 
@@ -80,7 +83,7 @@ func pythonImports(src []byte, language *ts.Language, root *ts.Node) []Import {
 		switch node.Type(language) {
 		case importStatement:
 			imports = append(imports, pythonModuleImports(src, language, node)...)
-		case "import_from_statement", "future_import_statement":
+		case importFromStatement, futureImportStatement:
 			if imported, ok := pythonFromImport(src, language, node); ok {
 				imports = append(imports, imported)
 			}
@@ -96,7 +99,7 @@ func pythonModuleImports(src []byte, language *ts.Language, statement *ts.Node) 
 		module := ""
 		alias := ""
 		switch child.Type(language) {
-		case "aliased_import":
+		case aliasedImport:
 			if child.NamedChildCount() > 0 {
 				module = child.NamedChild(0).Text(src)
 			}
@@ -133,7 +136,7 @@ func pythonFromImport(
 	moduleNode := statement.NamedChild(0)
 	module := moduleNode.Text(src)
 	firstName := 1
-	if statement.Type(language) == "future_import_statement" {
+	if statement.Type(language) == futureImportStatement {
 		module = "__future__"
 		firstName = 0
 	}
@@ -149,7 +152,7 @@ func pythonFromImport(
 			imported.Kind = ImportWildcard
 			imported.Names = nil
 			return imported, true
-		case "aliased_import":
+		case aliasedImport:
 			if child.NamedChildCount() == 0 {
 				continue
 			}

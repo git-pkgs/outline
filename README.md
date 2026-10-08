@@ -106,10 +106,11 @@ ID, bare name, or qualified name; `Callers`/`Callees` return one-hop call edges;
 sinks; `Path(from, to, opts)` returns the shortest forward call chain;
 `JSON(w)` writes sorted output so repeated builds of unchanged input are
 byte-identical. Go and Python include cross-file call resolution. Ruby includes
-direct calls, same-file calls within the same class or module, distinct instance
-and singleton method names, unresolved dynamic receivers, subshells, and local
-`require_relative` load edges. Other supported languages contain file, symbol,
-module, and import structure with call edges omitted.
+direct calls within the same class or module and follows literal
+`require_relative` chains to singleton and `module_function` bodies in loaded
+files. It retains distinct instance and singleton method names, unresolved
+dynamic receivers, subshells, and local load edges. Other supported languages
+contain file, symbol, module, and import structure with call edges omitted.
 
 `Tree(paths []string) string` renders a box-drawing directory tree from a flat
 path list.
@@ -148,11 +149,7 @@ $ outline affected -inferred -dir testdata/cli-go ext:go:os/exec:Command
 NODE Handler func main.go:9 exported=true sig=func Handler(name string) error
 NODE os/exec.Command external exported=false sig=
 NODE main func main.go:17 exported=false sig=func main()
-EDGE Handler --calls[inferred]--> Run at main.go:14
-NODE Run external exported=false sig=
 EDGE Handler --calls[inferred]--> os/exec.Command at main.go:14
-EDGE Handler --calls[inferred]--> Load at main.go:10
-NODE Load func store/store.go:7 exported=true sig=func Load(name string) (Record, error)
 EDGE main --calls[extracted]--> Handler at main.go:18
 ```
 

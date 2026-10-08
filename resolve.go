@@ -16,9 +16,10 @@ type resolver struct {
 	paths []string
 	files map[string]*fileAnalysis
 
-	goModule string
-	goPkgs   map[string]map[string]string
-	pyRoots  []string
+	goModule   string
+	goPkgs     map[goPackage]map[string]string
+	pyRoots    []string
+	rubyScopes map[string]rubyScope
 
 	// modules maps a mod: ID to the repository-relative files that
 	// implement it, once resolved.
@@ -36,15 +37,17 @@ type scope struct {
 	// children maps a decl index (or -1 for top level) to its direct
 	// child decl indices, for lexical resolution of nested calls.
 	children map[int][]int
+	bindings map[int][]binding
 }
 
 func newResolver(root string, files []fileAnalysis, hints ResolutionHints) *resolver {
 	r := &resolver{
-		root:    root,
-		hints:   hints,
-		files:   make(map[string]*fileAnalysis, len(files)),
-		modules: make(map[string][]string),
-		exports: make(map[string]map[string]string),
+		root:       root,
+		hints:      hints,
+		files:      make(map[string]*fileAnalysis, len(files)),
+		modules:    make(map[string][]string),
+		exports:    make(map[string]map[string]string),
+		rubyScopes: make(map[string]rubyScope),
 	}
 	for i := range files {
 		r.paths = append(r.paths, files[i].path)
@@ -56,26 +59,49 @@ func newResolver(root string, files []fileAnalysis, hints ResolutionHints) *reso
 	return r
 }
 
-// indexGoPackages groups top-level declarations from every Go file by
-// directory so same-package calls resolve without an import edge.
-func indexGoPackages(files []fileAnalysis) map[string]map[string]string {
-	pkgs := make(map[string]map[string]string)
+type goPackage struct {
+	Dir   string
+	Name  string
+	Tests bool
+}
+
+func fileGoPackage(f *fileAnalysis) goPackage {
+	return goPackage{Dir: path.Dir(f.path), Name: f.a.Package, Tests: strings.HasSuffix(f.path, "_test.go")}
+}
+
+func indexGoPackages(files []fileAnalysis) map[goPackage]map[string]string {
+	pkgs := make(map[goPackage]map[string]string)
 	for i := range files {
 		f := &files[i]
 		if f.a == nil || f.a.Lang != "go" {
 			continue
 		}
-		dir := path.Dir(f.path)
-		if pkgs[dir] == nil {
-			pkgs[dir] = make(map[string]string)
+		key := fileGoPackage(f)
+		keys := []goPackage{key}
+		if !key.Tests {
+			key.Tests = true
+			keys = append(keys, key)
 		}
-		for _, d := range f.a.Decls {
-			if d.Parent == -1 {
-				pkgs[dir][d.Name] = d.symID(f.path)
+		for _, key := range keys {
+			if pkgs[key] == nil {
+				pkgs[key] = make(map[string]string)
+			}
+			for _, d := range f.a.Decls {
+				if d.Parent == -1 && !d.Method {
+					addUniqueSymbol(pkgs[key], d.Name, d.symID(f.path))
+				}
 			}
 		}
 	}
 	return pkgs
+}
+
+func addUniqueSymbol(symbols map[string]string, name, id string) {
+	if previous, exists := symbols[name]; exists && previous != id {
+		symbols[name] = ""
+	} else if !exists {
+		symbols[name] = id
+	}
 }
 
 func readGoModule(root string) string {
@@ -141,6 +167,7 @@ func (r *resolver) emitModules(g *Graph) {
 			})
 		}
 	}
+	r.emitPythonSubmodules(g, seen)
 	for mid, paths := range r.modules {
 		for _, p := range paths {
 			g.Edges = append(g.Edges, Edge{
@@ -190,12 +217,17 @@ func (r *resolver) goModuleFiles(module string) []string {
 	}
 	dir := strings.TrimPrefix(rel, "/")
 	var files []string
+	packageName := ""
 	for _, p := range r.paths {
 		f := r.files[p]
-		if f.a == nil || f.a.Lang != "go" {
+		if f.a == nil || f.a.Lang != "go" || strings.HasSuffix(p, "_test.go") {
 			continue
 		}
 		if path.Dir(p) == dir || (dir == "" && path.Dir(p) == ".") {
+			if packageName != "" && f.a.Package != packageName {
+				return nil
+			}
+			packageName = f.a.Package
 			files = append(files, p)
 		}
 	}
@@ -209,8 +241,8 @@ func (r *resolver) pyModuleFiles(module, from string) []string {
 	rel := strings.ReplaceAll(module, ".", "/")
 	for _, root := range r.pyRoots {
 		for _, cand := range []string{
-			path.Join(root, rel+".py"),
 			path.Join(root, rel, "__init__.py"),
+			path.Join(root, rel+".py"),
 		} {
 			if _, ok := r.files[cand]; ok {
 				return []string{cand}
@@ -233,8 +265,14 @@ func (r *resolver) pyRelative(module, from string) []string {
 	base := dir
 	if rest != "" {
 		base = path.Join(dir, rest)
+	} else {
+		candidate := path.Join(base, "__init__.py")
+		if _, ok := r.files[candidate]; ok {
+			return []string{candidate}
+		}
+		return nil
 	}
-	for _, cand := range []string{base + ".py", path.Join(base, "__init__.py")} {
+	for _, cand := range []string{path.Join(base, "__init__.py"), base + ".py"} {
 		if _, ok := r.files[cand]; ok {
 			return []string{cand}
 		}
@@ -255,10 +293,14 @@ func (r *resolver) moduleExports(mid string) map[string]string {
 			continue
 		}
 		for _, d := range f.a.Decls {
-			if d.Parent != -1 || !d.Exported {
+			if d.Parent != -1 || !d.Exported || d.Method {
 				continue
 			}
-			m[d.Name] = d.symID(p)
+			if f.a.Lang == "go" {
+				addUniqueSymbol(m, d.Name, d.symID(p))
+			} else {
+				m[d.Name] = d.symID(p)
+			}
 		}
 	}
 	r.exports[mid] = m
@@ -271,15 +313,17 @@ func (r *resolver) fileScope(f *fileAnalysis) scope {
 		syms:     make(map[string]string),
 		mods:     make(map[string]string),
 		children: make(map[int][]int),
+		bindings: make(map[int][]binding),
+	}
+	for _, b := range f.a.Bindings {
+		sc.bindings[b.In] = append(sc.bindings[b.In], b)
 	}
 	if f.a.Lang == "go" {
-		maps.Copy(sc.syms, r.goPkgs[path.Dir(f.path)])
+		maps.Copy(sc.syms, r.goPkgs[fileGoPackage(f)])
 	}
-	for i, d := range f.a.Decls {
-		sc.children[d.Parent] = append(sc.children[d.Parent], i)
-		if d.Parent == -1 {
-			sc.syms[d.Name] = d.symID(f.path)
-		}
+	sc.addDeclarations(f)
+	if f.a.Lang == "python" {
+		return sc
 	}
 	for _, imp := range f.a.Imports {
 		mid := r.moduleID(f, imp)
@@ -302,7 +346,7 @@ func (r *resolver) fileScope(f *fileAnalysis) scope {
 				if local == "" {
 					local = n.Name
 				}
-				if sid, ok := exp[n.Name]; ok {
+				if sid := exp[n.Name]; sid != "" {
 					sc.syms[local] = sid
 				} else {
 					sc.syms[local] = ExtID(f.a.Lang, modName(mid), n.Name)
@@ -313,6 +357,18 @@ func (r *resolver) fileScope(f *fileAnalysis) scope {
 		}
 	}
 	return sc
+}
+
+func (sc *scope) addDeclarations(f *fileAnalysis) {
+	for i, d := range f.a.Decls {
+		if d.Method {
+			continue
+		}
+		sc.children[d.Parent] = append(sc.children[d.Parent], i)
+		if d.Parent == -1 {
+			sc.syms[d.Name] = d.symID(f.path)
+		}
+	}
 }
 
 func defaultAlias(lang, module string) string {
@@ -371,45 +427,30 @@ func (r *resolver) resolveCall(f *fileAnalysis, sc scope, c Call) (string, strin
 	if f.a.Lang == "ruby" {
 		return r.resolveRubyCall(f, c)
 	}
+	if f.a.Lang == "python" {
+		return r.resolvePythonCall(f, sc, c)
+	}
 	if c.Receiver == "" {
-		if sid, shadowed := lexical(f, sc, c.In, c.Name); sid != "" {
+		if sid, shadowed := lexical(f, sc, c.In, c.Name, c.Start); sid != "" {
 			return sid, ConfExtracted
 		} else if shadowed {
 			return ExtID(f.a.Lang, "", c.Name), ConfInferred
 		}
-		if sid, ok := sc.syms[c.Name]; ok {
+		if sid := sc.syms[c.Name]; sid != "" {
 			return sid, ConfInferred
 		}
 		return ExtID(f.a.Lang, "", c.Name), ConfInferred
 	}
-	if _, shadowed := lexical(f, sc, c.In, c.Receiver); shadowed {
+	if sid, shadowed := lexical(f, sc, c.In, c.Receiver, c.Start); sid != "" || shadowed {
 		return ExtID(f.a.Lang, c.Receiver, c.Name), ConfInferred
 	}
 	if mid, ok := sc.mods[c.Receiver]; ok {
-		if sid, ok := r.moduleExports(mid)[c.Name]; ok {
+		if sid := r.moduleExports(mid)[c.Name]; sid != "" {
 			return sid, ConfInferred
 		}
 		return ExtID(f.a.Lang, modName(mid), c.Name), ConfInferred
 	}
 	return ExtID(f.a.Lang, c.Receiver, c.Name), ConfInferred
-}
-
-func (r *resolver) resolveRubyCall(f *fileAnalysis, c Call) (string, string) {
-	switch c.ReceiverKind {
-	case ReceiverBare, ReceiverSelf:
-		owner, singleton := rubyCallContext(f.a.Decls, c.In)
-		if sid := rubyMethod(f, owner, c.Name, singleton); sid != "" {
-			return sid, ConfExtracted
-		}
-	case ReceiverConstant:
-		receiver := strings.TrimPrefix(c.Receiver, "::")
-		if sid, local := rubySingletonMethod(f, receiver, c.Name); sid != "" {
-			return sid, ConfExtracted
-		} else if local {
-			return ExtID("ruby", "local:"+receiver, c.Name), ConfInferred
-		}
-	}
-	return ExtID("ruby", c.Receiver, c.Name), ConfInferred
 }
 
 func rubyCallContext(decls []decl, in int) (owner int, singleton bool) {
@@ -419,7 +460,7 @@ func rubyCallContext(decls []decl, in int) (owner int, singleton bool) {
 	}
 	switch decls[in].Kind {
 	case KindFunc:
-		singleton = decls[in].Singleton
+		singleton = decls[in].Singleton || decls[in].ModuleFunction
 	case KindClass, KindType:
 		singleton = true
 	}
@@ -431,56 +472,24 @@ func rubyCallContext(decls []decl, in int) (owner int, singleton bool) {
 	return owner, singleton
 }
 
-func rubyMethod(f *fileAnalysis, owner int, name string, singleton bool) string {
-	for i, d := range f.a.Decls {
-		if d.Parent == owner && d.Kind == KindFunc && d.Name == name && d.Singleton == singleton {
-			return f.a.Decls[i].symID(f.path)
-		}
-	}
-	return ""
-}
-
-func rubySingletonMethod(f *fileAnalysis, receiver, name string) (target string, local bool) {
-	for i, d := range f.a.Decls {
-		if d.Kind == KindFunc && d.Singleton && d.Owner == receiver && d.Name == name {
-			if target != "" {
-				return "", true
-			}
-			target = d.symID(f.path)
-			local = true
-			continue
-		}
-		if d.Kind != KindClass && d.Kind != KindType {
-			continue
-		}
-		if d.Name != receiver && rubyQualified(f.a.Decls, i) != receiver {
-			continue
-		}
-		local = true
-		if sid := rubyMethod(f, i, name, true); sid != "" {
-			if target != "" {
-				return "", true
-			}
-			target = sid
-		}
-	}
-	return target, local
-}
-
 // lexical walks outward from the enclosing declaration, returning the
 // innermost visible decl matching name. If a parameter of an enclosing
 // function matches first, it reports shadowed instead. Class bodies do
 // not contribute their members to enclosed functions' scopes.
-func lexical(f *fileAnalysis, sc scope, in int, name string) (id string, shadowed bool) {
+func lexical(f *fileAnalysis, sc scope, in int, name string, pos uint32) (id string, shadowed bool) {
 	decls := f.a.Decls
 	at := in
 	for {
-		if at < 0 || at == in || decls[at].Kind != KindClass {
-			for _, ci := range sc.children[at] {
-				if decls[ci].Name == name {
-					return decls[ci].symID(f.path), false
+		for _, b := range sc.bindings[at] {
+			if b.Name == name && b.Start <= pos && pos < b.End {
+				if b.Decl >= 0 {
+					return decls[b.Decl].symID(f.path), false
 				}
+				return "", true
 			}
+		}
+		if sid := lexicalDeclaration(f, sc, in, at, name); sid != "" {
+			return sid, false
 		}
 		if at < 0 {
 			return "", false
@@ -490,6 +499,24 @@ func lexical(f *fileAnalysis, sc scope, in int, name string) (id string, shadowe
 		}
 		at = decls[at].Parent
 	}
+}
+
+func lexicalDeclaration(f *fileAnalysis, sc scope, in, at int, name string) string {
+	if at < 0 && f.a.Lang == "python" {
+		return ""
+	}
+	if at >= 0 && at != in && f.a.Decls[at].Kind == KindClass {
+		return ""
+	}
+	for _, ci := range sc.children[at] {
+		if f.a.Lang == "go" && at >= 0 && f.a.Decls[ci].Kind != KindFunc {
+			continue
+		}
+		if f.a.Decls[ci].Name == name {
+			return f.a.Decls[ci].symID(f.path)
+		}
+	}
+	return ""
 }
 
 func goVersionSuffix(s string) bool {
