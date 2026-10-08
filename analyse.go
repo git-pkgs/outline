@@ -25,6 +25,8 @@ type decl struct {
 	ModuleFunction bool
 	Conditional    bool
 	Owner          string
+	Anonymous      bool
+	BodyStart      uint32
 }
 
 func (d decl) symID(path string) string {
@@ -88,6 +90,7 @@ func extractDecls(src []byte, l *lang, root *ts.Node, matches []ts.QueryMatch) [
 	for _, m := range matches {
 		raw = append(raw, declsFromMatch(src, l, m)...)
 	}
+	raw = append(raw, anonymousDecls(src, l, root)...)
 	if exported, merge, ok := explicitExports(l, root, src); ok {
 		for i := range raw {
 			if merge {

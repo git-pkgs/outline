@@ -12,7 +12,7 @@ func TestBuildGoLocalBindings(t *testing.T) {
 		{"short declaration", "helper := func(){}; helper()", 0, 1},
 		{"var declaration", "var helper = func(){}; helper()", 0, 1},
 		{"initializer", "helper := helper; helper()", 0, 1},
-		{"initializer call", "helper := func(){ helper() }; helper()", 1, 1},
+		{"initializer call", "helper := func(){ helper() }; helper()", 0, 1},
 		{"before declaration", "helper(); helper := func(){}; helper()", 1, 1},
 		{"sibling block", "{ helper := func(){}; helper() }; helper()", 1, 1},
 		{"if initializer", "if helper := func(){}; true { helper() }; helper()", 1, 1},

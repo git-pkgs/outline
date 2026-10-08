@@ -87,7 +87,7 @@ func indexGoPackages(files []fileAnalysis) map[goPackage]map[string]string {
 				pkgs[key] = make(map[string]string)
 			}
 			for _, d := range f.a.Decls {
-				if d.Parent == -1 && !d.Method {
+				if d.Parent == -1 && !d.Method && !d.Anonymous {
 					addUniqueSymbol(pkgs[key], d.Name, d.symID(f.path))
 				}
 			}
@@ -293,7 +293,7 @@ func (r *resolver) moduleExports(mid string) map[string]string {
 			continue
 		}
 		for _, d := range f.a.Decls {
-			if d.Parent != -1 || !d.Exported || d.Method {
+			if d.Parent != -1 || !d.Exported || d.Method || d.Anonymous {
 				continue
 			}
 			if f.a.Lang == "go" {
@@ -361,7 +361,7 @@ func (r *resolver) fileScope(f *fileAnalysis) scope {
 
 func (sc *scope) addDeclarations(f *fileAnalysis) {
 	for i, d := range f.a.Decls {
-		if d.Method {
+		if d.Method || d.Anonymous {
 			continue
 		}
 		sc.children[d.Parent] = append(sc.children[d.Parent], i)
@@ -424,6 +424,13 @@ func (r *resolver) emitCalls(g *Graph) {
 }
 
 func (r *resolver) resolveCall(f *fileAnalysis, sc scope, c Call) (string, string) {
+	if c.ReceiverKind == ReceiverExpression && c.Receiver == "" {
+		for _, d := range f.a.Decls {
+			if d.Anonymous && d.Name == c.Name && c.Start <= d.Start && d.End <= c.End {
+				return d.symID(f.path), ConfExtracted
+			}
+		}
+	}
 	if f.a.Lang == "ruby" {
 		return r.resolveRubyCall(f, c)
 	}
@@ -454,6 +461,7 @@ func (r *resolver) resolveCall(f *fileAnalysis, sc scope, c Call) (string, strin
 }
 
 func rubyCallContext(decls []decl, in int) (owner int, singleton bool) {
+	in = rubyContextIn(decls, in)
 	owner = -1
 	if in < 0 {
 		return owner, false
@@ -470,6 +478,13 @@ func rubyCallContext(decls []decl, in int) (owner int, singleton bool) {
 		}
 	}
 	return owner, singleton
+}
+
+func rubyContextIn(decls []decl, in int) int {
+	for in >= 0 && decls[in].Anonymous {
+		in = decls[in].Parent
+	}
+	return in
 }
 
 // lexical walks outward from the enclosing declaration, returning the
