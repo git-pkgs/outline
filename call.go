@@ -56,7 +56,7 @@ func callsFor(src []byte, l *lang, root *ts.Node, decls []decl) ([]Call, bool) {
 		return nil, false
 	}
 	for i := range calls {
-		calls[i].In = enclosing(decls, calls[i].Start)
+		calls[i].In = callEnclosing(decls, calls[i].Start)
 	}
 	return calls, true
 }
@@ -67,7 +67,7 @@ func goCalls(src []byte, language *ts.Language, root *ts.Node) []Call {
 		if node.Type(language) != "call_expression" {
 			return
 		}
-		fn := node.ChildByFieldName("function", language)
+		fn := callFunction(node.ChildByFieldName("function", language), language)
 		if fn == nil {
 			return
 		}
@@ -76,6 +76,9 @@ func goCalls(src []byte, language *ts.Language, root *ts.Node) []Call {
 		case "identifier":
 			c.Name = fn.Text(src)
 			c.ReceiverKind = ReceiverBare
+		case "func_literal":
+			c.Name = anonymousName("func", fn.StartByte())
+			c.ReceiverKind = ReceiverExpression
 		case "selector_expression":
 			recv := fn.ChildByFieldName("operand", language)
 			member := fn.ChildByFieldName("field", language)
@@ -104,7 +107,7 @@ func pythonCalls(src []byte, language *ts.Language, root *ts.Node) []Call {
 		if node.Type(language) != "call" {
 			return
 		}
-		fn := node.ChildByFieldName("function", language)
+		fn := callFunction(node.ChildByFieldName("function", language), language)
 		if fn == nil {
 			return
 		}
@@ -113,6 +116,9 @@ func pythonCalls(src []byte, language *ts.Language, root *ts.Node) []Call {
 		case "identifier":
 			c.Name = fn.Text(src)
 			c.ReceiverKind = ReceiverBare
+		case "lambda":
+			c.Name = anonymousName("lambda", fn.StartByte())
+			c.ReceiverKind = ReceiverExpression
 		case "attribute":
 			recv := fn.ChildByFieldName("object", language)
 			member := fn.ChildByFieldName("attribute", language)

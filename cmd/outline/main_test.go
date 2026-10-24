@@ -211,3 +211,32 @@ func assertQuerySelection(t *testing.T, out, wantNodes, wantEdges string) {
 		t.Fatalf("nodes=%v edges=%v, want nodes=%s edges=%s\n%s", nodes, edges, wantNodes, wantEdges, out)
 	}
 }
+
+func TestCLIAnonymousOwnership(t *testing.T) {
+	cases := []struct{ language, filename, source, anonymous string }{
+		{"go", "app.go", "package app\nfunc sink(){}\nfunc entry(){register(func(){sink()})}\n", "<func@"},
+		{"python", "app.py", "def sink():\n    pass\ndef entry():\n    register(lambda: sink())\n", "<lambda@"},
+		{"ruby", "app.rb", "def sink\nend\ndef entry\n  register { sink() }\nend\n", "<block@"},
+	}
+	for _, c := range cases {
+		t.Run(c.language, func(t *testing.T) {
+			dir := t.TempDir()
+			if err := os.WriteFile(filepath.Join(dir, c.filename), []byte(c.source), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			graph := filepath.Join(t.TempDir(), "graph.json")
+			run(t, "graph", "-o", graph, dir)
+			for _, query := range []string{"callers", "affected"} {
+				out := run(t, query, "-g", graph, "-inferred", "sink")
+				if !strings.Contains(out, c.anonymous) || strings.Contains(out, "NODE entry ") || strings.Contains(out, "EDGE entry ") {
+					t.Fatalf("%s attributed callback execution to entry:\n%s", query, out)
+				}
+			}
+			cmd := exec.Command(binPath, "path", "-g", graph, "-inferred", "entry", "sink")
+			out, err := cmd.CombinedOutput()
+			if err == nil || !strings.Contains(string(out), "no path") {
+				t.Fatalf("registration still produced an execution path: %v\n%s", err, out)
+			}
+		})
+	}
+}

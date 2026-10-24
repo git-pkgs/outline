@@ -204,6 +204,12 @@ func emitFileNodes(g *Graph, files []fileAnalysis, methodOwners map[string]strin
 }
 
 func qualified(lang string, decls []decl, i int) string {
+	if d := decls[i]; d.Anonymous {
+		if d.Parent >= 0 {
+			return qualified(lang, decls, d.Parent) + "." + d.Name
+		}
+		return d.Name
+	}
 	if lang == "ruby" {
 		return rubyQualified(decls, i)
 	}

@@ -105,7 +105,13 @@ ID, bare name, or qualified name; `Callers`/`Callees` return one-hop call edges;
 `Affected(seeds, opts)` returns reverse-reachable evidence paths from a set of
 sinks; `Path(from, to, opts)` returns the shortest forward call chain;
 `JSON(w)` writes sorted output so repeated builds of unchanged input are
-byte-identical. Go and Python include cross-file call resolution. Ruby includes
+byte-identical. Anonymous Go functions, Python lambdas, and Ruby blocks have
+their own function nodes and retain their body calls. Containment or passing a
+callback does not add a call edge to its body. Directly invoked Go/Python
+literals have call edges to their anonymous nodes; variable-held callables and
+callback execution by another function remain unresolved.
+
+Go and Python include cross-file call resolution. Ruby includes
 direct calls within the same class or module and follows literal
 `require_relative` chains to singleton and `module_function` bodies in loaded
 files. It retains distinct instance and singleton method names, unresolved
