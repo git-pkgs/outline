@@ -116,7 +116,12 @@ path list.
 
 `Supported(filename string) bool` reports whether a file's extension maps to a
 language with an outlining query. `SupportedSource(src, filename)` also checks
-source-based detection such as Ruby shebangs.
+source-based detection such as Ruby shebangs. Ruby interpreter names must be
+`ruby` or `ruby` followed by a numeric version, such as `ruby3.3`. Detection
+checks the interpreter, not later arguments. For `env`, it recognizes literal
+assignments and the `-i`, `-u`, `-C`, and `-S` options (including their long
+forms), then checks the selected command. Unknown options, quoted words,
+escapes, and variable expansion before the command are left unsupported.
 
 `SetParseTimeout(d time.Duration)` overrides the per-file parse timeout
 (default 1s). Must be called before the first `Outline` or `Pack` call.
