@@ -120,7 +120,7 @@ func pythonCalls(src []byte, language *ts.Language, root *ts.Node) []Call {
 				return
 			}
 			c.Name = member.Text(src)
-			c.Receiver = leftmostIdentifier(src, language, recv)
+			c.Receiver = pythonReceiver(src, language, recv)
 			c.ReceiverKind = ReceiverLocal
 			if c.Receiver == "" && recv != nil {
 				c.Receiver = recv.Text(src)
@@ -213,13 +213,15 @@ func rubyLoadMethod(name string) bool {
 	}
 }
 
-// leftmostIdentifier walks a chained attribute expression (a.b.c) and
-// returns the base identifier text, or "" if the base is not a plain name.
-func leftmostIdentifier(src []byte, language *ts.Language, node *ts.Node) string {
+func pythonReceiver(src []byte, language *ts.Language, node *ts.Node) string {
+	if node == nil {
+		return ""
+	}
+	text := node.Text(src)
 	for node != nil {
 		switch node.Type(language) {
 		case "identifier":
-			return node.Text(src)
+			return text
 		case "attribute":
 			node = node.ChildByFieldName("object", language)
 		default:

@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -69,6 +70,32 @@ func TestCLIGoAffected(t *testing.T) {
 	}
 }
 
+func TestCLIReadmeAffectedExample(t *testing.T) {
+	repo := filepath.Join("..", "..")
+	readme, err := os.ReadFile(filepath.Join(repo, "README.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	command := "affected -inferred -dir testdata/cli-go ext:go:os/exec:Command"
+	_, after, found := strings.Cut(string(readme), "$ outline "+command+"\n")
+	if !found {
+		t.Fatal("README affected example missing")
+	}
+	want, _, found := strings.Cut(after, "```")
+	if !found {
+		t.Fatal("README example fence missing")
+	}
+	cmd := exec.Command(binPath, strings.Fields(command)...)
+	cmd.Dir = repo
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("README command failed: %v\n%s", err, out)
+	}
+	if string(out) != want {
+		t.Fatalf("README example differs from CLI output:\n%s\nwant:\n%s", out, want)
+	}
+}
+
 func TestCLIPythonAffected(t *testing.T) {
 	dir := testdata("cli-py")
 
@@ -120,5 +147,67 @@ func TestCLIUsage(t *testing.T) {
 	}
 	if !strings.Contains(string(out), "outline graph") {
 		t.Errorf("usage not printed: %s", out)
+	}
+}
+
+func TestCLIQuerySelection(t *testing.T) {
+	cases := []struct {
+		language string
+		filename string
+		source   string
+	}{
+		{"go", "app.go", "package app\nfunc entry(){middle()}\nfunc middle(){sink();sink();side()}\nfunc sink(){}\nfunc side(){}\n"},
+		{"python", "app.py", "def entry():\n    middle()\ndef middle():\n    sink()\n    sink()\n    side()\ndef sink():\n    pass\ndef side():\n    pass\n"},
+		{"ruby", "app.rb", "def entry\n  middle()\nend\ndef middle\n  sink()\n  sink()\n  side()\nend\ndef sink\nend\ndef side\nend\n"},
+	}
+	for _, c := range cases {
+		t.Run(c.language, func(t *testing.T) {
+			dir := t.TempDir()
+			if err := os.WriteFile(filepath.Join(dir, c.filename), []byte(c.source), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			graph := filepath.Join(t.TempDir(), "graph.json")
+			run(t, "graph", "-o", graph, dir)
+			queries := []struct {
+				name  string
+				args  []string
+				nodes string
+				edges string
+			}{
+				{"affected", []string{"affected", "-depth", "1", "sink"}, "middle,sink", "middle>sink"},
+				{"path", []string{"path", "middle", "sink"}, "middle,sink", "middle>sink"},
+				{"callers", []string{"callers", "sink"}, "middle,sink", "middle>sink,middle>sink"},
+				{"callees", []string{"callees", "middle"}, "middle,side,sink", "middle>side,middle>sink,middle>sink"},
+			}
+			for _, q := range queries {
+				t.Run(q.name, func(t *testing.T) {
+					args := append([]string{q.args[0], "-g", graph}, q.args[1:]...)
+					out := run(t, args...)
+					assertQuerySelection(t, out, q.nodes, q.edges)
+				})
+			}
+		})
+	}
+}
+
+func assertQuerySelection(t *testing.T, out, wantNodes, wantEdges string) {
+	t.Helper()
+	var nodes, edges []string
+	for line := range strings.SplitSeq(out, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 0 {
+			continue
+		}
+		switch fields[0] {
+		case "NODE":
+			nodes = append(nodes, fields[1])
+		case "EDGE":
+			edges = append(edges, fields[1]+">"+fields[3])
+		}
+	}
+	slices.Sort(nodes)
+	slices.Sort(edges)
+	if strings.Join(nodes, ",") != wantNodes || strings.Join(edges, ",") != wantEdges {
+		t.Fatalf("nodes=%v edges=%v, want nodes=%s edges=%s\n%s", nodes, edges, wantNodes, wantEdges, out)
 	}
 }

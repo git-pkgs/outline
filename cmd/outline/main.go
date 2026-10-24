@@ -191,17 +191,19 @@ func cmdNeighbours(args []string, callers bool) error {
 	}
 	opts := c.traverse()
 	ids := []string{seed}
+	var selected []outline.Edge
 	for _, e := range edges {
 		if !opts.Allow(e) {
 			continue
 		}
+		selected = append(selected, e)
 		if callers {
 			ids = append(ids, e.From)
 		} else {
 			ids = append(ids, e.To)
 		}
 	}
-	return g.Text(os.Stdout, ids, c.budget, opts.Allow)
+	return writeEdges(g, ids, selected, c.budget)
 }
 
 func cmdAffected(args []string) error {
@@ -227,7 +229,7 @@ func cmdAffected(args []string) error {
 		seeds = append(seeds, id)
 	}
 	opts := c.traverse()
-	return writePaths(g, g.Affected(seeds, opts), c.budget, opts.Allow)
+	return writePaths(g, g.Affected(seeds, opts), c.budget)
 }
 
 func cmdPath(args []string) error {
@@ -257,7 +259,7 @@ func cmdPath(args []string) error {
 	if p == nil {
 		return fmt.Errorf("no path from %s to %s", from, to)
 	}
-	return writePaths(g, []outline.Path{p}, c.budget, opts.Allow)
+	return writePaths(g, []outline.Path{p}, c.budget)
 }
 
 // resolveOne turns a user-supplied seed into exactly one node ID, returning
@@ -278,11 +280,13 @@ func resolveOne(g *outline.Graph, name string) (string, error) {
 	return "", fmt.Errorf("%s", b.String())
 }
 
-func writePaths(g *outline.Graph, paths []outline.Path, budget int, allow func(outline.Edge) bool) error {
+func writePaths(g *outline.Graph, paths []outline.Path, budget int) error {
 	seen := make(map[string]bool)
 	var ids []string
+	var edges []outline.Edge
 	for _, p := range paths {
 		for _, e := range p {
+			edges = append(edges, e)
 			if !seen[e.From] {
 				seen[e.From] = true
 				ids = append(ids, e.From)
@@ -294,5 +298,15 @@ func writePaths(g *outline.Graph, paths []outline.Path, budget int, allow func(o
 		}
 	}
 	fmt.Printf("%d paths, %d nodes\n", len(paths), len(ids))
-	return g.Text(os.Stdout, ids, budget, allow)
+	return writeEdges(g, ids, edges, budget)
+}
+
+func writeEdges(g *outline.Graph, ids []string, edges []outline.Edge, budget int) error {
+	selected := make(map[outline.Edge]bool, len(edges))
+	for _, e := range edges {
+		selected[e] = true
+	}
+	return g.Text(os.Stdout, ids, budget, func(e outline.Edge) bool {
+		return selected[e]
+	})
 }

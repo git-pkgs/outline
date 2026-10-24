@@ -10,18 +10,21 @@ import (
 // retains the full definition span and nesting so callers can compute node
 // identities and containment before the tree is released.
 type decl struct {
-	Name      string
-	Kind      string
-	Line      int
-	Exported  bool
-	NameAt    uint32
-	Start     uint32
-	End       uint32
-	SigEnd    uint32
-	Parent    int
-	Params    []string
-	Singleton bool
-	Owner     string
+	Name           string
+	Kind           string
+	Line           int
+	Exported       bool
+	NameAt         uint32
+	Start          uint32
+	End            uint32
+	SigEnd         uint32
+	Parent         int
+	Params         []string
+	Singleton      bool
+	Method         bool
+	ModuleFunction bool
+	Conditional    bool
+	Owner          string
 }
 
 func (d decl) symID(path string) string {
@@ -30,10 +33,16 @@ func (d decl) symID(path string) string {
 
 // analysis is the per-file fact set that graph resolution consumes.
 type analysis struct {
-	Lang    string
-	Decls   []decl
-	Imports []Import
-	Calls   []Call
+	Lang         string
+	Package      string
+	Decls        []decl
+	Imports      []Import
+	Calls        []Call
+	Bindings     []binding
+	SyntaxErrors bool
+	PyImports    []pythonImport
+	PyExports    *pythonExports
+	RubyLoads    []Import
 }
 
 // analyse parses src once and returns every fact the graph builder needs
@@ -49,10 +58,28 @@ func analyse(src []byte, filename string) (*analysis, bool) {
 	root := tree.RootNode()
 	matches := l.query.Execute(tree)
 
-	a := &analysis{Lang: l.name}
+	a := &analysis{Lang: l.name, SyntaxErrors: root.HasError()}
+	if l.name == "go" {
+		for i := range root.NamedChildCount() {
+			node := root.NamedChild(i)
+			if node.Type(l.language) == "package_clause" && node.NamedChildCount() > 0 {
+				a.Package = node.NamedChild(0).Text(src)
+				break
+			}
+		}
+	}
 	a.Decls = extractDecls(src, l, root, matches)
 	a.Imports, _ = importsFor(src, l, root)
 	a.Calls, _ = callsFor(src, l, root, a.Decls)
+	a.Bindings = bindingsFor(src, l, root, a.Decls)
+	if l.name == "python" {
+		a.PyImports = pythonImportFacts(src, l, root, a.Decls)
+		a.PyExports = pythonExportFacts(src, l, root)
+	}
+	if l.name == "ruby" {
+		a.RubyLoads = rubyLoadFacts(src, l, root)
+		rubyModuleFunctions(a, src, l, root)
+	}
 	return a, true
 }
 
@@ -113,7 +140,11 @@ func declsFromMatch(src []byte, l *lang, m ts.QueryMatch) []decl {
 	}
 	params := extractParams(src, l, definition)
 	singleton := l.name == "ruby" && definition.Type(l.language) == "singleton_method"
+	method := l.name == "go" && definition.Type(l.language) == "method_declaration"
 	owner := ""
+	if method {
+		owner = goReceiverOwner(src, l, definition)
+	}
 	if singleton {
 		if object := definition.ChildByFieldName("object", l.language); object != nil {
 			owner = object.Text(src)
@@ -129,18 +160,20 @@ func declsFromMatch(src []byte, l *lang, m ts.QueryMatch) []decl {
 			continue
 		}
 		out = append(out, decl{
-			Name:      name,
-			Kind:      normalizeSymbolKind(l.name, kind, name, definition, src, l.language),
-			Line:      int(n.StartPoint().Row) + 1,
-			Exported:  exported || symbolExported(l.name, name, definition, src, l.language),
-			NameAt:    n.StartByte(),
-			Start:     start,
-			End:       end,
-			SigEnd:    sigEnd,
-			Parent:    -1,
-			Params:    params,
-			Singleton: singleton,
-			Owner:     owner,
+			Name:        name,
+			Kind:        normalizeSymbolKind(l.name, kind, name, definition, src, l.language),
+			Line:        int(n.StartPoint().Row) + 1,
+			Exported:    exported || symbolExported(l.name, name, definition, src, l.language),
+			NameAt:      n.StartByte(),
+			Start:       start,
+			End:         end,
+			SigEnd:      sigEnd,
+			Parent:      -1,
+			Params:      params,
+			Singleton:   singleton,
+			Method:      method,
+			Owner:       owner,
+			Conditional: l.name == "python" && pythonConditional(definition, l.language),
 		})
 	}
 	return out

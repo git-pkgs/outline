@@ -498,7 +498,7 @@ func nimImports(src []byte, language *ts.Language, root *ts.Node) []Import {
 			for i := range list.NamedChildCount() {
 				imports = append(imports, nimImportExpression(src, language, list.NamedChild(i), sourceLine(node))...)
 			}
-		case "import_from_statement":
+		case importFromStatement:
 			if imported, ok := nimFromImport(src, language, node); ok {
 				imports = append(imports, imported)
 			}

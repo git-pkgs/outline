@@ -73,19 +73,19 @@ func Build(root string, opts Options) (*Graph, error) {
 	sort.Strings(paths)
 
 	files := analyseAll(abs, paths, opts)
+	r := newResolver(abs, files, opts.Resolution)
 
 	g := &Graph{
 		SchemaVersion: SchemaVersion,
 		ToolVersion:   ToolVersion,
-		SourceDigest:  sourceDigest(files),
+		SourceDigest:  sourceDigest(files, r.goModule, r.pyRoots),
 		Complete:      !truncated,
 	}
 	if truncated {
 		g.Warnings = append(g.Warnings, fmt.Sprintf("file limit %d reached; graph is partial", opts.MaxFiles))
 	}
 
-	emitFileNodes(g, files)
-	r := newResolver(abs, files, opts.Resolution)
+	emitFileNodes(g, files, r.goMethodOwners())
 	r.emitModules(g)
 	r.emitCalls(g)
 
@@ -158,7 +158,7 @@ func shebangCandidate(path string) bool {
 	return !strings.Contains(base, ".")
 }
 
-func emitFileNodes(g *Graph, files []fileAnalysis) {
+func emitFileNodes(g *Graph, files []fileAnalysis, methodOwners map[string]string) {
 	for _, f := range files {
 		fid := FileID(f.path)
 		g.Nodes = append(g.Nodes, Node{ID: fid, Kind: KindFile, Name: f.path, File: f.path})
@@ -168,6 +168,10 @@ func emitFileNodes(g *Graph, files []fileAnalysis) {
 				g.Complete = false
 			}
 			continue
+		}
+		if f.a.SyntaxErrors {
+			g.Warnings = append(g.Warnings, f.path+": syntax-errors")
+			g.Complete = false
 		}
 		for i, d := range f.a.Decls {
 			sid := d.symID(f.path)
@@ -184,11 +188,15 @@ func emitFileNodes(g *Graph, files []fileAnalysis) {
 				Sig:       signature(f.src, d),
 			})
 			from := fid
+			conf := ConfExtracted
 			if d.Parent >= 0 {
 				from = f.a.Decls[d.Parent].symID(f.path)
+			} else if owner := methodOwners[sid]; owner != "" {
+				from = owner
+				conf = ConfInferred
 			}
 			g.Edges = append(g.Edges, Edge{
-				From: from, To: sid, Rel: RelContains, Conf: ConfExtracted,
+				From: from, To: sid, Rel: RelContains, Conf: conf,
 				File: f.path, Line: d.Line,
 			})
 		}
@@ -200,8 +208,14 @@ func qualified(lang string, decls []decl, i int) string {
 		return rubyQualified(decls, i)
 	}
 	parts := []string{decls[i].Name}
+	if decls[i].Method && decls[i].Owner != "" {
+		parts = append(parts, decls[i].Owner)
+	}
 	for p := decls[i].Parent; p >= 0; p = decls[p].Parent {
 		parts = append(parts, decls[p].Name)
+		if decls[p].Method && decls[p].Owner != "" {
+			parts = append(parts, decls[p].Owner)
+		}
 	}
 	for l, r := 0, len(parts)-1; l < r; l, r = l+1, r-1 {
 		parts[l], parts[r] = parts[r], parts[l]
@@ -228,7 +242,7 @@ func rubyQualified(decls []decl, i int) string {
 			return d.Name
 		}
 		separator := "#"
-		if d.Singleton {
+		if d.Singleton || d.ModuleFunction {
 			separator = "."
 		}
 		return strings.Join(owner, "::") + separator + d.Name
@@ -276,13 +290,19 @@ func sanitise(s string) string {
 	return b.String()
 }
 
-func sourceDigest(files []fileAnalysis) string {
+func sourceDigest(files []fileAnalysis, goModule string, sourceRoots []string) string {
 	h := sha256.New()
 	for _, f := range files {
 		h.Write([]byte(f.path))
 		h.Write([]byte{0})
 		fh := sha256.Sum256(f.src)
 		h.Write(fh[:])
+	}
+	moduleHash := sha256.Sum256([]byte(goModule))
+	h.Write(moduleHash[:])
+	for _, root := range sourceRoots {
+		rootHash := sha256.Sum256([]byte(root))
+		h.Write(rootHash[:])
 	}
 	return hex.EncodeToString(h.Sum(nil))
 }
